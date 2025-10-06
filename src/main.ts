@@ -14,7 +14,7 @@ async function bootstrap() {
 
   // ✨ Cải tiến: Xử lý origin linh hoạt cho cả dev và production
   const allowedOrigins = [
-    process.env.FRONTEND_URL, // Luôn cho phép URL từ .env
+    process.env.FRONTEND_URL || 'https://dilaghien.vercel.app/', // Luôn cho phép URL từ .env
     // Thêm các URL khác nếu cần, ví dụ: preview URL của Vercel/Render
   ];
 
