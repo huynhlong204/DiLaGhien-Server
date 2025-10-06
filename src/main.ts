@@ -43,6 +43,8 @@ async function bootstrap() {
     }),
   );
 
+  app.setGlobalPrefix('api');
+
   const config = new DocumentBuilder()
     .setTitle('LeafTech API Docs')
     .setDescription('Swagger cho hệ thống NestJS backend')
