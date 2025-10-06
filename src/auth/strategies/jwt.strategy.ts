@@ -21,6 +21,9 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       ignoreExpiration: false,
       // Add the '!' here to assert the value is not null/undefined
       secretOrKey: configService.get<string>('JWT_SECRET_ADMIN')!,
+      jsonWebTokenOptions: {
+        clockTolerance: 30,
+      }
     });
 
     console.log('JWT STRATEGY INSTANTIATED - Using secret:', process.env.JWT_SECRET_ADMIN);
