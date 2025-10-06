@@ -56,20 +56,24 @@ export class AuthService {
 
     private _setAuthCookies(res: Response, accessToken: string, refreshToken?: string) {
 
+        const isProd = process.env.NODE_ENV === 'production';
+
         res.cookie('access_token', accessToken, {
             httpOnly: true,
-            secure: true,
-            sameSite: 'none',
-            maxAge: 1 * 60 * 60 * 1000, // 1 giờ
+            secure: isProd, // phải true nếu dùng https (vercel có)
+            sameSite: 'none', // để share cookie cross-origin
+            maxAge: 1 * 60 * 60 * 1000,
+            domain: isProd ? '.dilaghien.vercel.app' : 'localhost',
             path: '/',
         });
 
         if (refreshToken) {
             res.cookie('refresh_token', refreshToken, {
                 httpOnly: true,
-                secure: true,
+                secure: isProd,
                 sameSite: 'none',
-                maxAge: 7 * 24 * 60 * 60 * 1000, // 7 ngày
+                maxAge: 7 * 24 * 60 * 60 * 1000,
+                domain: isProd ? '.dilaghien.vercel.app' : 'localhost',
                 path: '/',
             });
         }
