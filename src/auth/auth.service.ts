@@ -54,27 +54,27 @@ export class AuthService {
         return this.createSessionAndSetCookies(user, res);
     }
 
-    private _setAuthCookies(res: Response, accessToken: string, refreshToken?: string) {
+    // private _setAuthCookies(res: Response, accessToken: string, refreshToken?: string) {
 
-        // const isProd = process.env.NODE_ENV === 'production';
+    //     // const isProd = process.env.NODE_ENV === 'production';
 
-        res.cookie('access_token', accessToken, {
-            httpOnly: true,
-            secure: process.env.NODE_ENV === 'production',
-            sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
-            path: '/',
-            maxAge: 1 * 60 * 60 * 1000, // 1 giờ
-        });
+    //     res.cookie('access_token', accessToken, {
+    //         httpOnly: true,
+    //         secure: process.env.NODE_ENV === 'production',
+    //         sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+    //         path: '/',
+    //         maxAge: 1 * 60 * 60 * 1000, // 1 giờ
+    //     });
 
-        res.cookie('refresh_token', refreshToken, {
-            httpOnly: true,
-            secure: process.env.NODE_ENV === 'production',
-            sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
-            path: '/',
-            maxAge: 7 * 24 * 60 * 60 * 1000, // 7 ngày
-        });
+    //     res.cookie('refresh_token', refreshToken, {
+    //         httpOnly: true,
+    //         secure: process.env.NODE_ENV === 'production',
+    //         sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+    //         path: '/',
+    //         maxAge: 7 * 24 * 60 * 60 * 1000, // 7 ngày
+    //     });
 
-    }
+    // }
 
     private async createSessionAndSetCookies(user: any, res: Response) {
         // companyId sẽ là null nếu user không có company_id (ví dụ: Admin)
@@ -101,7 +101,7 @@ export class AuthService {
             },
         });
 
-        this._setAuthCookies(res, accessToken, refreshToken);
+        // this._setAuthCookies(res, accessToken, refreshToken);
 
         const permissions = await this.getUserPermissions(user.role_id);
 
@@ -154,7 +154,7 @@ export class AuthService {
                 },
             });
 
-            this._setAuthCookies(res, newAccessToken);
+            // this._setAuthCookies(res, newAccessToken);
 
             return {
                 message: 'Access token đã được làm mới.',
@@ -174,8 +174,8 @@ export class AuthService {
             data: { is_active: false },
         });
 
-        res.clearCookie('access_token');
-        res.clearCookie('refresh_token');
+        // res.clearCookie('access_token');
+        // res.clearCookie('refresh_token');
 
         return { message: 'Đăng xuất thành công.' };
     }

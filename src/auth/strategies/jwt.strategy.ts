@@ -22,7 +22,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       // Add the '!' here to assert the value is not null/undefined
       secretOrKey: configService.get<string>('JWT_SECRET_ADMIN')!,
       jsonWebTokenOptions: {
-        clockTolerance: 30,
+        clockTolerance: 320,
       }
     });
 
