@@ -12,6 +12,8 @@ dayjs.extend(utc);
 dayjs.extend(timezone);
 dayjs.tz.setDefault('Asia/Ho_Chi_Minh');
 
+
+
 @Injectable()
 export class AuthService {
     constructor(private prisma: PrismaService, private jwtService: JwtService) { }
@@ -52,6 +54,28 @@ export class AuthService {
         return this.createSessionAndSetCookies(user, res);
     }
 
+    private _setAuthCookies(res: Response, accessToken: string, refreshToken?: string) {
+        const isProduction = process.env.NODE_ENV === 'production';
+
+        res.cookie('access_token', accessToken, {
+            httpOnly: true,
+            secure: isProduction,
+            sameSite: isProduction ? 'none' : 'lax', // 'lax' hoặc 'strict' cho local
+            maxAge: 1 * 60 * 60 * 1000, // 1 giờ
+            path: '/',
+        });
+
+        if (refreshToken) {
+            res.cookie('refresh_token', refreshToken, {
+                httpOnly: true,
+                secure: isProduction,
+                sameSite: isProduction ? 'none' : 'lax',
+                maxAge: 7 * 24 * 60 * 60 * 1000, // 7 ngày
+                path: '/',
+            });
+        }
+    }
+
     private async createSessionAndSetCookies(user: any, res: Response) {
         // companyId sẽ là null nếu user không có company_id (ví dụ: Admin)
         const companyId = user.company_id;
@@ -77,21 +101,7 @@ export class AuthService {
             },
         });
 
-        res.cookie('access_token', accessToken, {
-            httpOnly: true,
-            secure: process.env.NODE_ENV === 'production',
-            sameSite: 'strict',
-            maxAge: 1 * 60 * 60 * 1000, // 1 hour
-            path: '/',
-        });
-
-        res.cookie('refresh_token', refreshToken, {
-            httpOnly: true,
-            secure: process.env.NODE_ENV === 'production',
-            sameSite: 'strict',
-            maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-            path: '/',
-        });
+        this._setAuthCookies(res, accessToken, refreshToken);
 
         const permissions = await this.getUserPermissions(user.role_id);
 
@@ -144,13 +154,7 @@ export class AuthService {
                 },
             });
 
-            res.cookie('access_token', newAccessToken, {
-                httpOnly: true,
-                secure: process.env.NODE_ENV === 'production',
-                sameSite: 'strict',
-                maxAge: 1 * 60 * 60 * 1000, // 1 hour
-                path: '/',
-            });
+            this._setAuthCookies(res, newAccessToken);
 
             return {
                 message: 'Access token đã được làm mới.',
