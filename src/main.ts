@@ -13,8 +13,7 @@ async function bootstrap() {
 
   // Danh sách origin cho phép (chuẩn hóa không có dấu '/')
   const allowedOrigins = [
-    'https://dilaghien.vercel.app',
-    'http://localhost:3000',
+    'https://dilaghien.vercel.app'
   ];
 
   // Cấu hình CORS
