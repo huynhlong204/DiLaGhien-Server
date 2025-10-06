@@ -1,0 +1,3 @@
+-- AlterTable
+ALTER TABLE "trips" ALTER COLUMN "status" DROP DEFAULT,
+ALTER COLUMN "status" SET DATA TYPE VARCHAR(50);
