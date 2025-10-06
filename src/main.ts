@@ -41,6 +41,8 @@ async function bootstrap() {
     }),
   );
 
+  console.log('SERVER STARTING - JWT_ACCESS_SECRET:', process.env.JWT_SECRET_ADMIN);
+
   await app.listen(process.env.PORT || 8000);
   console.log(`🚀 Backend running on port ${process.env.PORT || 8000}`);
   console.log(`📘 Swagger docs available at /api/docs`);

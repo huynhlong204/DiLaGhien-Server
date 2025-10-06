@@ -22,7 +22,10 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       // Add the '!' here to assert the value is not null/undefined
       secretOrKey: configService.get<string>('JWT_SECRET_ADMIN')!,
     });
+
+    console.log('JWT STRATEGY INSTANTIATED - Using secret:', process.env.JWT_SECRET_ADMIN);
   }
+
 
   async validate(payload: any): Promise<AuthenticatedUser> {
     const { user_id, role_id, company_id } = payload;
