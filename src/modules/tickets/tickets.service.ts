@@ -8,8 +8,6 @@ import { InjectRedis } from '@nestjs-modules/ioredis';
 import { CreatePublicBookingDto } from './dto/create-public-booking.dto';
 import { tickets as TicketModel } from '@prisma/client';
 
-
-// Hàm helper có thể đặt trong một file utils riêng
 async function generateUniqueTicketCode(prisma: { tickets: { findUnique: (args: { where: { code: string } }) => Promise<any> } }): Promise<string> {
   const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
   let code: string = 'VE';
