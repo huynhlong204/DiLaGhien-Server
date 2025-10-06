@@ -60,21 +60,22 @@ export class AuthService {
 
         res.cookie('access_token', accessToken, {
             httpOnly: true,
-            secure: true, // phải true nếu dùng https (vercel có)
-            sameSite: 'none', // để share cookie cross-origin
-            maxAge: 1 * 60 * 60 * 1000,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+            domain: process.env.NODE_ENV === 'production' ? '.vercel.app' : 'localhost',
             path: '/',
+            maxAge: 3600 * 1000,
         });
 
-        if (refreshToken) {
-            res.cookie('refresh_token', refreshToken, {
-                httpOnly: true,
-                secure: true,
-                sameSite: 'none',
-                maxAge: 7 * 24 * 60 * 60 * 1000,
-                path: '/',
-            });
-        }
+        res.cookie('refresh_token', refreshToken, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+            domain: process.env.NODE_ENV === 'production' ? '.vercel.app' : 'localhost',
+            path: '/',
+            maxAge: 7 * 24 * 3600 * 1000,
+        });
+
     }
 
     private async createSessionAndSetCookies(user: any, res: Response) {
