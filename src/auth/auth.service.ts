@@ -73,7 +73,7 @@ export class AuthService {
                 secure: isProd,
                 sameSite: 'none',
                 maxAge: 7 * 24 * 60 * 60 * 1000,
-                domain: isProd ? '.dilaghien.vercel.app' : 'localhost',
+                domain: isProd ? '.vercel.app' : 'localhost',
                 path: '/',
             });
         }

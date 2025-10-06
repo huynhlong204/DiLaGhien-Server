@@ -12,34 +12,40 @@ async function bootstrap() {
 
   app.use(cookieParser());
 
-  // ✨ Cải tiến: Xử lý origin linh hoạt cho cả dev và production
+  // ✅ Danh sách origin cho phép (bỏ dấu / ở cuối URL)
   const allowedOrigins = [
-    process.env.FRONTEND_URL || 'https://dilaghien.vercel.app/', // Luôn cho phép URL từ .env
-    // Thêm các URL khác nếu cần, ví dụ: preview URL của Vercel/Render
+    'https://dilaghien.vercel.app',
+    'http://localhost:3000', // cho dev local
   ];
 
+  // ✅ Bật CORS chuẩn cho cookie cross-site
   app.enableCors({
     origin: (origin, callback) => {
-      // Cho phép các request không có origin (ví dụ: Postman, mobile apps)
-      if (!origin || allowedOrigins.indexOf(origin) !== -1) {
+      if (!origin || allowedOrigins.includes(origin)) {
         callback(null, true);
       } else {
+        console.warn(`❌ Blocked by CORS: ${origin}`);
         callback(new Error('Not allowed by CORS'));
       }
     },
-    credentials: true,
+    credentials: true, // cần để gửi cookie
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
   });
 
+  // ✅ Prefix cho API
   app.setGlobalPrefix('api');
 
-  // Chỉ cần gọi useGlobalPipes một lần
-  app.useGlobalPipes(new ValidationPipe({
-    whitelist: true,
-    forbidNonWhitelisted: true,
-    transform: true
-  }));
+  // ✅ Validation global
+  app.useGlobalPipes(
+    new ValidationPipe({
+      whitelist: true,
+      forbidNonWhitelisted: true,
+      transform: true,
+    }),
+  );
 
-  // 🧩 Swagger config (Không thay đổi)
+  // ✅ Swagger config
   const config = new DocumentBuilder()
     .setTitle('LeafTech API Docs')
     .setDescription('Swagger cho hệ thống NestJS backend')
@@ -51,8 +57,11 @@ async function bootstrap() {
   const document = SwaggerModule.createDocument(app, config);
   SwaggerModule.setup('api/docs', app, document);
 
-  await app.listen(process.env.PORT || 8000);
-  console.log(`🚀 Backend running on port ${process.env.PORT || 8000}`);
+  const port = process.env.PORT || 8000;
+  await app.listen(port);
+
+  console.log(`🚀 Backend running on port ${port}`);
   console.log(`📘 Swagger docs available at /api/docs`);
+  console.log(`✅ CORS allowed origins: ${allowedOrigins.join(', ')}`);
 }
 bootstrap();
