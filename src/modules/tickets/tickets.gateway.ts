@@ -1,4 +1,3 @@
-// src/modules/tickets/tickets.gateway.ts
 import {
     SubscribeMessage,
     WebSocketGateway,
@@ -13,13 +12,13 @@ import { InjectRedis } from '@nestjs-modules/ioredis';
 
 @WebSocketGateway({
     cors: {
-        origin: process.env.URL_FRONTEND || '*', // Đảm bảo URL Frontend đúng
+        origin: process.env.URL_FRONTEND || '*',
     },
 })
 export class TicketsGateway implements OnGatewayDisconnect, OnGatewayConnection {
     @WebSocketServer() server: Server;
     private logger: Logger = new Logger('TicketsGateway');
-    private readonly HOLD_DURATION_SECONDS = 300; // 5 phút
+    private readonly HOLD_DURATION_SECONDS = 300;
 
     constructor(@InjectRedis() private readonly redis: Redis) { }
 

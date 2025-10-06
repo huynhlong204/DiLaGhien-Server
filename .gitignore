@@ -1,0 +1,60 @@
+# ===================================================================
+# Tệp .gitignore được tối ưu cho dự án NestJS
+# Website: https://www.toptal.com/developers/gitignore/api/nestjs
+# ===================================================================
+
+# Thư mục chứa các package đã cài đặt
+# Đây là mục quan trọng nhất, không bao giờ commit thư mục này
+node_modules/
+
+# Thư mục chứa code đã được biên dịch sang JavaScript
+# Thư mục này sẽ được tạo ra mỗi khi bạn build dự án
+dist/
+
+# File cache của trình quản lý package (npm, yarn, pnpm)
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+package-lock.json.bak
+yarn.lock.bak
+lerna-debug.log*
+
+# Các file chứa biến môi trường
+# Rất quan trọng: Không commit các file này vì chúng chứa thông tin nhạy cảm
+# như mật khẩu, API keys, chuỗi kết nối database.
+# Thay vào đó, hãy tạo một file .env.example để người khác biết cần tạo file .env với các biến nào.
+# .env
+# .env.local
+# .env.development.local
+# .env.test.local
+# .env.production.local
+# .env.*.local
+
+# File cấu hình của các IDE và trình soạn thảo code phổ biến
+.idea/
+.vscode/
+*.sublime-project
+*.sublime-workspace
+
+# File cache và log của NestJS CLI hoặc các công cụ liên quan
+.cache
+coverage/
+*.log
+
+# File hệ thống của macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+Icon?
+ehthumbs.db
+Thumbs.db
+
+# File nén tạm thời
+*.zip
+*.rar
+*.gz
+*.7z

@@ -10,7 +10,6 @@ async function bootstrap() {
     logger: ['log', 'error', 'warn', 'debug', 'verbose'],
   });
 
-  // Sử dụng cookie-parser trước cors
   app.use(cookieParser());
 
   app.enableCors({
@@ -23,15 +22,15 @@ async function bootstrap() {
 
   // 🧩 Swagger config
   const config = new DocumentBuilder()
-    .setTitle('LeafTech API Docs') // Đặt tên tùy bạn
+    .setTitle('LeafTech API Docs')
     .setDescription('Swagger cho hệ thống NestJS backend')
     .setVersion('1.0')
-    .addCookieAuth('access_token', { type: 'apiKey', in: 'cookie' }) // Nếu dùng cookie
-    .addBearerAuth() // Nếu dùng JWT trong header
+    .addCookieAuth('access_token', { type: 'apiKey', in: 'cookie' })
+    .addBearerAuth()
     .build();
 
   const document = SwaggerModule.createDocument(app, config);
-  SwaggerModule.setup('api/docs', app, document); // Truy cập tại http://localhost:8000/api/docs
+  SwaggerModule.setup('api/docs', app, document);
 
   app.useGlobalPipes(
     new ValidationPipe({

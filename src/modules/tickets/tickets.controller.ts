@@ -1,7 +1,6 @@
 import { Controller, Get, Post, Body, Param, ParseIntPipe, UseGuards, Put, Request } from '@nestjs/common';
 import { TicketsService } from './tickets.service';
 import { CreateTicketDto } from './dto/create-ticket.dto';
-// Ví dụ về Guards, bạn có thể thay đổi cho phù hợp
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { Roles } from '../../auth/decorators/roles.decorator';

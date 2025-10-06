@@ -40,10 +40,10 @@ import { AuthUserModule } from './modules/auth-user/auth-user.module';
     TripsModule,
     CompanyRouteStopModule,
     TicketsModule,
-    ConfigModule.forRoot({ isGlobal: true }), // Cần cho process.env
+    ConfigModule.forRoot({ isGlobal: true }),
     RedisModule.forRoot({
       type: 'single',
-      url: 'redis://localhost:6379',
+      url: 'rediss://default:ARzwAAImcDJlNDczYjU3M2FmZmU0OWE1OGI4NmUxYWFjOGVkNjYzOHAyNzQwOA@teaching-loon-7408.upstash.io:6379',
     }), TripClientModule, AuthUserModule,
   ],
   controllers: [AppController],
