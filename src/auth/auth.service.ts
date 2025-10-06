@@ -60,7 +60,7 @@ export class AuthService {
         res.cookie('access_token', accessToken, {
             httpOnly: true,
             secure: isProduction,
-            sameSite: isProduction ? 'none' : 'lax', // 'lax' hoặc 'strict' cho local
+            sameSite: isProduction ? 'none' : 'lax',
             maxAge: 1 * 60 * 60 * 1000, // 1 giờ
             path: '/',
         });
