@@ -62,18 +62,16 @@ export class AuthService {
             httpOnly: true,
             secure: process.env.NODE_ENV === 'production',
             sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
-            domain: process.env.NODE_ENV === 'production' ? '.vercel.app' : 'localhost',
             path: '/',
-            maxAge: 3600 * 1000,
+            maxAge: 1 * 60 * 60 * 1000, // 1 giờ
         });
 
         res.cookie('refresh_token', refreshToken, {
             httpOnly: true,
             secure: process.env.NODE_ENV === 'production',
             sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
-            domain: process.env.NODE_ENV === 'production' ? '.vercel.app' : 'localhost',
             path: '/',
-            maxAge: 7 * 24 * 3600 * 1000,
+            maxAge: 7 * 24 * 60 * 60 * 1000, // 7 ngày
         });
 
     }
