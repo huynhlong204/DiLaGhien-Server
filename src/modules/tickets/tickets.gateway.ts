@@ -12,9 +12,11 @@ import { InjectRedis } from '@nestjs-modules/ioredis';
 
 @WebSocketGateway({
     cors: {
-        origin: process.env.URL_FRONTEND || '*',
+        origin: process.env.URL_FRONTEND || 'http://localhost:3000',
     },
 })
+
+
 export class TicketsGateway implements OnGatewayDisconnect, OnGatewayConnection {
     @WebSocketServer() server: Server;
     private logger: Logger = new Logger('TicketsGateway');

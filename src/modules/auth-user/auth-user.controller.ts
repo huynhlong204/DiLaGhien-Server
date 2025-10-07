@@ -70,7 +70,7 @@ export class AuthUserController {
         const tokens = await this.authUserService.login(req.user);
         res.cookie('access_token', tokens.access_token, getCookieOptions(15 * 60 * 1000));
         res.cookie('refresh_token', tokens.refresh_token, getCookieOptions(7 * 24 * 60 * 60 * 1000));
-        return res.redirect(process.env.FRONTEND_URL || 'https://dilaghien.vercel.app');
+        return res.redirect(process.env.FRONTEND_URL || 'http://localhost:3000');
     }
 
     @Get('profile')

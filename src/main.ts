@@ -14,7 +14,7 @@ async function bootstrap() {
   app.use(cookieParser());
 
   app.enableCors({
-    origin: 'https://dilaghien.vercel.app',
+    origin: ['https://dilaghien.vercel.app', 'http://localhost:3000'],
     credentials: true,
   });
 

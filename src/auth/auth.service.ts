@@ -18,40 +18,36 @@ dayjs.tz.setDefault('Asia/Ho_Chi_Minh');
 export class AuthService {
     constructor(private prisma: PrismaService, private jwtService: JwtService) { }
 
-    async adminLogin(loginDto: LoginDto, res: Response) {
+    async adminLogin(loginDto: LoginDto) {
         const user = await this.prisma.users.findUnique({
             where: { email: loginDto.email },
             include: { roles: true },
         });
 
-        if (!user) throw new UnauthorizedException('Email không tồn tại.');
-        // Đảm bảo chỉ admin mới có vai trò 'admin' và không có company_id
+        if (!user) throw new UnauthorizedException('Email không tồn tồn tại.');
         if (!user.roles || user.roles.name !== 'admin' || user.company_id !== null) throw new ForbiddenException('Chỉ admin được phép đăng nhập và không được liên kết với công ty.');
         if (!user.password_hash) throw new UnauthorizedException('Dữ liệu user không hợp lệ.');
 
         const isValid = await bcrypt.compare(loginDto.password, user.password_hash);
         if (!isValid) throw new UnauthorizedException('Mật khẩu không đúng.');
 
-        // Admin user sẽ có company_id là null hoặc undefined, sẽ được xử lý trong createSessionAndSetCookies
-        return this.createSessionAndSetCookies(user, res);
+        return this.createSessionAndTokens(user);
     }
 
-    async companyLogin(loginDto: LoginDto, res: Response) {
+    async companyLogin(loginDto: LoginDto) {
         const user = await this.prisma.users.findUnique({
             where: { email: loginDto.email },
-            include: { roles: true, transport_company: true }, // THÊM include transport_company để lấy company_id và name
+            include: { roles: true, transport_company: true },
         });
 
         if (!user) throw new UnauthorizedException('Email không tồn tại.');
-        // Kiểm tra đúng vai trò (owner) và phải có company_id
-        if (!user.roles || user.roles.name !== 'owner' || !user.company_id)
-            throw new ForbiddenException('Chỉ chủ nhà xe được phép đăng nhập và phải liên kết với một công ty.');
+        if (!user.roles || user.roles.name !== 'owner' || !user.company_id) throw new ForbiddenException('Chỉ chủ nhà xe được phép đăng nhập và phải liên kết với một công ty.');
         if (!user.password_hash) throw new UnauthorizedException('Dữ liệu user không hợp lệ.');
 
         const isValid = await bcrypt.compare(loginDto.password, user.password_hash);
         if (!isValid) throw new UnauthorizedException('Mật khẩu không đúng.');
 
-        return this.createSessionAndSetCookies(user, res);
+        return this.createSessionAndTokens(user);
     }
 
     // private _setAuthCookies(res: Response, accessToken: string, refreshToken?: string) {
@@ -76,60 +72,51 @@ export class AuthService {
 
     // }
 
-    private async createSessionAndSetCookies(user: any, res: Response) {
-        // companyId sẽ là null nếu user không có company_id (ví dụ: Admin)
+    private async createSessionAndTokens(user: any) {
         const companyId = user.company_id;
-
-        // Truyền companyId vào hàm generateAccessToken và generateRefreshToken
         const accessToken = this.generateAccessToken(user.user_id, user.role_id, companyId);
         const refreshToken = this.generateRefreshToken(user.user_id, user.role_id, companyId);
         const now = dayjs().tz('Asia/Ho_Chi_Minh');
-
-        const accessTokenExpiresAt = now.add(1, 'hour');
         const refreshTokenExpiresAt = now.add(7, 'day');
 
-        // Lưu refresh token vào session để quản lý phiên, không phải access token
-        // Access token sẽ được sử dụng trong cookie để xác thực request
-        const session = await this.prisma.session.create({
+        await this.prisma.session.create({
             data: {
                 user_id: user.user_id,
-                token: refreshToken, // <<< Sửa: Lưu refresh token vào session
+                token: refreshToken,
                 created_at: now.toDate(),
-                expires_at: refreshTokenExpiresAt.toDate(), // Thời gian hết hạn của session theo refresh token
+                expires_at: refreshTokenExpiresAt.toDate(),
                 is_active: true,
                 last_used_at: now.toDate(),
             },
         });
 
-        // this._setAuthCookies(res, accessToken, refreshToken);
-
         const permissions = await this.getUserPermissions(user.role_id);
 
+        // CHANGED: Trả về tokens và thông tin user trong một object
         return {
-            user_id: user.user_id,
-            email: user.email,
-            role_name: user.roles.name,
-            company_id: user.company_id,
-            company_name: user.transport_company ? user.transport_company.name : null, // Thêm tên công ty nếu có
-            permissions
+            user: {
+                user_id: user.user_id,
+                email: user.email,
+                role_name: user.roles.name,
+                company_id: user.company_id,
+                company_name: user.transport_company ? user.transport_company.name : null,
+                permissions
+            },
+            accessToken,
+            refreshToken
         };
     }
 
-    async refreshToken(refreshToken: string, res: Response) {
-        // Tìm session dựa trên refresh token
+    async refreshToken(refreshToken: string) {
         const session = await this.prisma.session.findFirst({
             where: { token: refreshToken, is_active: true },
         });
 
-        if (!session || dayjs(session.expires_at).tz('Asia/Ho_Chi_Minh').isBefore(dayjs().tz('Asia/Ho_Chi_Minh'))) {
-            // Đánh dấu session là không hoạt động nếu hết hạn hoặc không tìm thấy
+        if (!session || dayjs(session.expires_at).isBefore(dayjs())) {
             if (session) {
-                await this.prisma.session.update({
-                    where: { id: session.id },
-                    data: { is_active: false },
-                });
+                await this.prisma.session.update({ where: { id: session.id }, data: { is_active: false } });
             }
-            throw new UnauthorizedException('Refresh token không hợp lệ hoặc đã hết hạn. Vui lòng đăng nhập lại.');
+            throw new UnauthorizedException('Refresh token không hợp lệ hoặc đã hết hạn.');
         }
 
         try {
@@ -137,46 +124,27 @@ export class AuthService {
                 secret: process.env.JWT_REFRESH_SECRET
             });
 
-            const now = dayjs().tz('Asia/Ho_Chi_Minh');
-            // Tạo access token mới với company_id từ refresh token payload
             const newAccessToken = this.generateAccessToken(payload.user_id, payload.role_id, payload.company_id);
-            const accessTokenExpiresAt = now.add(1, 'hour'); // Access token có thể có thời gian sống dài hơn nếu muốn
 
-            // Cập nhật session `last_used_at` để kéo dài thời gian sống của refresh token (nếu bạn muốn)
             await this.prisma.session.update({
                 where: { id: session.id },
-                data: {
-                    last_used_at: now.toDate(),
-                    // Không cập nhật `token` và `expires_at` của session ở đây,
-                    // vì session `token` là refresh token, không phải access token.
-                    // Nếu bạn muốn refresh token cũng tự động gia hạn, bạn cần tạo refresh token mới
-                    // và cập nhật session. Hoặc giữ nguyên logic này nếu refresh token cố định 7 ngày.
-                },
+                data: { last_used_at: dayjs().toDate() },
             });
 
-            // this._setAuthCookies(res, newAccessToken);
-
+            // CHANGED: Trả về access token mới
             return {
-                message: 'Access token đã được làm mới.',
-                access_token: newAccessToken // Có thể không cần trả về này nếu chỉ dùng cookie
+                accessToken: newAccessToken
             };
         } catch (error) {
-            console.error("Lỗi làm mới token:", error);
-            throw new UnauthorizedException('Refresh token không hợp lệ. Vui lòng đăng nhập lại.');
+            throw new UnauthorizedException('Refresh token không hợp lệ.');
         }
     }
 
-    async logout(user_id: number, access_token: string, res: Response) {
-        // Tìm và vô hiệu hóa tất cả các session của user đó, hoặc chỉ session tương ứng với refresh token nếu bạn muốn logout riêng lẻ từng phiên
-        // Để đơn giản, ta sẽ vô hiệu hóa tất cả các session đang active của user.
+    async logout(user_id: number) {
         await this.prisma.session.updateMany({
-            where: { user_id, is_active: true }, // Vô hiệu hóa tất cả các phiên đang hoạt động của user
+            where: { user_id, is_active: true },
             data: { is_active: false },
         });
-
-        // res.clearCookie('access_token');
-        // res.clearCookie('refresh_token');
-
         return { message: 'Đăng xuất thành công.' };
     }
 
@@ -267,14 +235,14 @@ export class AuthService {
 
     private generateAccessToken(user_id: number, role_id: number, company_id?: number | null) {
         const payload: { user_id: number; role_id: number; company_id?: number } = { user_id, role_id };
-        // Chỉ thêm company_id nếu nó khác null và undefined
         if (company_id !== undefined && company_id !== null) {
             payload.company_id = company_id;
         }
 
         return this.jwtService.sign(
             payload,
-            { secret: process.env.JWT_ACCESS_SECRET, expiresIn: '1h' }
+            // CHANGED: Thời gian sống của access token giảm còn 10 phút
+            { secret: process.env.JWT_ACCESS_SECRET, expiresIn: '10m' }
         );
     }
 

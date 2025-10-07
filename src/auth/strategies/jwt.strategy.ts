@@ -12,18 +12,10 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     private configService: ConfigService,
   ) {
     super({
-      jwtFromRequest: (req) => {
-        if (req && req.cookies) {
-          return req.cookies['access_token'];
-        }
-        return null;
-      },
+      jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
       // Add the '!' here to assert the value is not null/undefined
       secretOrKey: configService.get<string>('JWT_SECRET_ADMIN')!,
-      jsonWebTokenOptions: {
-        clockTolerance: 320,
-      }
     });
 
     console.log('JWT STRATEGY INSTANTIATED - Using secret:', process.env.JWT_SECRET_ADMIN);
