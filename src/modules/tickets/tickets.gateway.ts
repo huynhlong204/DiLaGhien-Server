@@ -12,8 +12,11 @@ import { InjectRedis } from '@nestjs-modules/ioredis';
 
 @WebSocketGateway({
     cors: {
-        origin: process.env.URL_FRONTEND || 'http://localhost:3000',
-    },
+        origin: [
+            process.env.FRONTEND_URL,
+            process.env.FRONTEND_URL_LOCAL
+        ],
+    }
 })
 
 
