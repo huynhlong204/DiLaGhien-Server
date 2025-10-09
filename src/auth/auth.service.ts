@@ -273,6 +273,7 @@ export class AuthService {
         const permissions = await this.getUserPermissions(user.role_id);
         return {
             user_id: user.user_id,
+            url: user.transport_company?.avatar_url,
             email: user.email,
             role_name: user.roles.name,
             company_id: user.company_id,
