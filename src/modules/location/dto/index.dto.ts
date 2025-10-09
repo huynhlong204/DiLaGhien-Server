@@ -18,6 +18,10 @@ export class CreateLocationDto {
   @IsOptional()
   @IsString()
   commune?: string;
+
+  @IsOptional()
+  @IsString()
+  locationType?: string;
 }
 
 export class UpdateLocationDto {

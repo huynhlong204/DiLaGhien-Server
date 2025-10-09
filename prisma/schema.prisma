@@ -123,6 +123,8 @@ model customers {
   updated_at        DateTime           @updatedAt @db.Timestamptz(6)
   customer_profiles customer_profiles?
   tickets           tickets[]
+   reviews reviews[]
+  interactions user_interactions[]
 
   @@index([email])
   @@map("customers")
@@ -296,6 +298,7 @@ model trips {
   seat_layout_templatesId Int?
   routes                  routes?                @relation(fields: [routesId], references: [id])
   routesId                Int?
+   reviews reviews[]
 
   @@map("trips")
 }
@@ -310,6 +313,7 @@ model tickets {
   booking_time     DateTime           @default(now()) @db.Timestamptz(6)
   status           String
   note             String?
+   final_amount Float?
   payments         payments[]
   shuttle_requests shuttle_requests[]
   customers        customers?         @relation(fields: [customer_id], references: [customer_id], onDelete: SetNull)
@@ -369,4 +373,58 @@ model shuttle_assignments {
   shuttle_requests   shuttle_requests @relation(fields: [shuttle_request_id], references: [id], onDelete: Cascade)
 
   @@map("shuttle_assignments")
+}
+
+
+model user_interactions {
+  id          Int      @id @default(autoincrement())
+  customer_id Int?     // Nullable cho khách vãng lai
+  session_id  String   // Để nhóm các hành động trong 1 phiên
+  event_type  String   // Ví dụ: 'search', 'view_trip', 'view_company'
+  event_data  Json     // Lưu chi tiết: { "from": "HCM", "to": "Da Lat" } hoặc { "trip_id": 123 }
+  created_at  DateTime @default(now()) @db.Timestamptz(6)
+
+  customer customers? @relation(fields: [customer_id], references: [customer_id])
+
+  @@map("user_interactions")
+}
+
+model reviews {
+  id          Int      @id @default(autoincrement())
+  trip_id     Int
+  customer_id Int
+  rating      Int      // Điểm số từ 1 đến 5
+  comment     String?
+  created_at  DateTime @default(now()) @db.Timestamptz(6)
+
+  trip     trips     @relation(fields: [trip_id], references: [id], onDelete: Cascade)
+  customer customers @relation(fields: [customer_id], references: [customer_id], onDelete: Cascade)
+
+  @@unique([trip_id, customer_id]) // Mỗi khách chỉ đánh giá 1 chuyến 1 lần
+  @@map("reviews")
+}
+
+model special_dates {
+  date       DateTime @id @db.Date
+  event_name String
+  event_type String   // Ví dụ: 'public_holiday', 'school_vacation'
+
+  @@map("special_dates")
+}
+
+model promotions {
+  id               Int      @id @default(autoincrement())
+  code             String   @unique
+  description      String
+  discount_type    String   // 'percentage' hoặc 'fixed_amount'
+  discount_value   Float
+  valid_from       DateTime
+  valid_to         DateTime
+  is_active        Boolean  @default(true)
+  usage_limit      Int?
+  
+  // Có thể thêm các quan hệ phức tạp hơn sau này 
+  // Ví dụ: áp dụng cho tuyến nào, nhà xe nào...
+
+  @@map("promotions")
 }
