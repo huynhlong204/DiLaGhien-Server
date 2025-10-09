@@ -33,6 +33,8 @@ async function bootstrap() {
   const document = SwaggerModule.createDocument(app, config);
   SwaggerModule.setup('api/docs', app, document); // Truy cập tại http://localhost:8000/api/docs
 
+  app.enableShutdownHooks()
+
   app.useGlobalPipes(
     new ValidationPipe({
       transform: true,
