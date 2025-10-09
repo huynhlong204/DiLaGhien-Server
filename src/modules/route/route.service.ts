@@ -373,13 +373,13 @@ export class RouteService {
             to_location: true,
           },
         },
-        transport_companies: true,
       },
     });
 
     return companyRoutes.map(cr => ({
       ...cr.routes,
       approved: cr.approved,
+      companyId: cr.company_id,
       companyRouteId: cr.id,
     }));
   }
