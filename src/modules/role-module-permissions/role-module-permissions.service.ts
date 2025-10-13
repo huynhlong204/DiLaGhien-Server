@@ -27,6 +27,35 @@ export class RoleModulePermissionsService {
     }));
   }
 
+  async findOne(roleId: number, moduleId: number) {
+    try {
+      const roleModulePermission = await this.prisma.role_module_permissions.findUniqueOrThrow({
+        where: {
+          role_id_module_id: {
+            role_id: roleId,
+            module_id: moduleId,
+          },
+        },
+        include: {
+          roles: { select: { name: true } },
+          modules: { select: { name: true } },
+        },
+      });
+
+      return {
+        ...roleModulePermission,
+        permissions_bitmask: Number(roleModulePermission.permissions_bitmask),
+      };
+    } catch (error) {
+      // Bắt lỗi nếu không tìm thấy bản ghi (P2025)
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') {
+        throw new NotFoundException(`RoleModulePermissions with Role ID ${roleId} and Module ID ${moduleId} not found`);
+      }
+      throw new BadRequestException('Failed to find RoleModulePermissions');
+    }
+  }
+
+
   async create(data: { role_id: number; module_id: number; permissions_bitmask: number }) {
     try {
       const roleModulePermission = await this.prisma.role_module_permissions.create({

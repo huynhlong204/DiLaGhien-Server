@@ -3,11 +3,19 @@ import { RoleModulePermissionsService } from './role-module-permissions.service'
 
 @Controller('admin/role-module-permissions')
 export class RoleModulePermissionsController {
-  constructor(private readonly roleModulePermissionsService: RoleModulePermissionsService) {}
+  constructor(private readonly roleModulePermissionsService: RoleModulePermissionsService) { }
 
   @Get()
   async findAll() {
     return this.roleModulePermissionsService.findAll();
+  }
+
+  @Get(':roleId/:moduleId')
+  async findOne(
+    @Param('roleId', ParseIntPipe) roleId: number,
+    @Param('moduleId', ParseIntPipe) moduleId: number,
+  ) {
+    return this.roleModulePermissionsService.findOne(roleId, moduleId);
   }
 
   @Post()

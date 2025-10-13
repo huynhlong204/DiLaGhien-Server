@@ -21,9 +21,11 @@ import { ConfigModule } from '@nestjs/config';
 import { RedisModule } from '@nestjs-modules/ioredis';
 import { TripClientModule } from './modules/trip-client/trip-client.module';
 import { AuthUserModule } from './modules/auth-user/auth-user.module';
+import { CustomersModule } from './modules/customers/customers.module';
 
 @Module({
   imports: [
+    CustomersModule,
     PrismaModule,
     AuthModule,
     RoleModule,
