@@ -29,7 +29,8 @@ export class PermissionService {
         permission_id: true,
         name: true,
         bit_value: true,
-        description: true
+        description: true,
+        module_id: true
         // Không có _count ở đây
       },
     });
