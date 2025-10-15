@@ -6,7 +6,12 @@ import { Prisma } from '@prisma/client';
 export class RoleModulePermissionsService {
   constructor(private prisma: PrismaService) { }
 
+  /**
+   * Tối ưu: Lấy tất cả các quyền trong 1 lần truy vấn,
+   * sau đó xử lý gộp dữ liệu trong ứng dụng.
+   */
   async findAll() {
+    // 1. Lấy tất cả các role-module-permissions
     const roleModulePermissions = await this.prisma.role_module_permissions.findMany({
       include: {
         roles: { select: { name: true } },
@@ -14,17 +19,23 @@ export class RoleModulePermissionsService {
       },
     });
 
-    const permissions = await this.prisma.permissions.findMany({
+    // 2. Lấy tất cả các permissions có thể có trong 1 truy vấn duy nhất
+    const allPermissions = await this.prisma.permissions.findMany({
       select: { permission_id: true, name: true, bit_value: true },
     });
 
-    return roleModulePermissions.map(item => ({
-      ...item,
-      permissions_bitmask: Number(item.permissions_bitmask),
-      permissions: permissions
+    // 3. Ánh xạ và lọc permissions từ danh sách đã lấy (thực hiện trong bộ nhớ, rất nhanh)
+    return roleModulePermissions.map(item => {
+      const matchedPermissions = allPermissions
         .filter(p => (item.permissions_bitmask & p.bit_value) === p.bit_value)
-        .map(p => ({ name: p.name, bit_value: p.bit_value })),
-    }));
+        .map(p => ({ name: p.name, bit_value: p.bit_value }));
+
+      return {
+        ...item,
+        permissions_bitmask: Number(item.permissions_bitmask),
+        permissions: matchedPermissions,
+      };
+    });
   }
 
   async findOne(roleId: number, moduleId: number) {
@@ -42,12 +53,21 @@ export class RoleModulePermissionsService {
         },
       });
 
+      // Lấy các permissions tương ứng với module này
+      const permissionsForModule = await this.prisma.permissions.findMany({
+        where: { module_id: moduleId },
+      });
+
+      const matchedPermissions = permissionsForModule
+        .filter(p => (roleModulePermission.permissions_bitmask & p.bit_value) === p.bit_value)
+        .map(p => ({ name: p.name, bit_value: p.bit_value }));
+
       return {
         ...roleModulePermission,
         permissions_bitmask: Number(roleModulePermission.permissions_bitmask),
+        permissions: matchedPermissions,
       };
     } catch (error) {
-      // Bắt lỗi nếu không tìm thấy bản ghi (P2025)
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') {
         throw new NotFoundException(`RoleModulePermissions with Role ID ${roleId} and Module ID ${moduleId} not found`);
       }
