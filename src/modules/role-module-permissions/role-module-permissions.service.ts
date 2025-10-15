@@ -6,12 +6,7 @@ import { Prisma } from '@prisma/client';
 export class RoleModulePermissionsService {
   constructor(private prisma: PrismaService) { }
 
-  /**
-   * Tối ưu: Lấy tất cả các quyền trong 1 lần truy vấn,
-   * sau đó xử lý gộp dữ liệu trong ứng dụng.
-   */
   async findAll() {
-    // 1. Lấy tất cả các role-module-permissions
     const roleModulePermissions = await this.prisma.role_module_permissions.findMany({
       include: {
         roles: { select: { name: true } },
@@ -19,14 +14,18 @@ export class RoleModulePermissionsService {
       },
     });
 
-    // 2. Lấy tất cả các permissions có thể có trong 1 truy vấn duy nhất
+    // SỬA LỖI 1: Lấy thêm `module_id` của mỗi permission
     const allPermissions = await this.prisma.permissions.findMany({
-      select: { permission_id: true, name: true, bit_value: true },
+      select: { permission_id: true, name: true, bit_value: true, module_id: true },
     });
 
-    // 3. Ánh xạ và lọc permissions từ danh sách đã lấy (thực hiện trong bộ nhớ, rất nhanh)
     return roleModulePermissions.map(item => {
-      const matchedPermissions = allPermissions
+      // SỬA LỖI 2: Thêm bước lọc permission theo module_id của item hiện tại
+      const permissionsForThisModule = allPermissions
+        .filter(p => p.module_id === item.module_id); // Lọc theo module_id trước
+
+      // Sau đó mới lọc theo bitmask trên danh sách đã được lọc đúng module
+      const matchedPermissions = permissionsForThisModule
         .filter(p => (item.permissions_bitmask & p.bit_value) === p.bit_value)
         .map(p => ({ name: p.name, bit_value: p.bit_value }));
 
@@ -38,6 +37,7 @@ export class RoleModulePermissionsService {
     });
   }
 
+  // Các hàm khác giữ nguyên...
   async findOne(roleId: number, moduleId: number) {
     try {
       const roleModulePermission = await this.prisma.role_module_permissions.findUniqueOrThrow({
@@ -53,7 +53,6 @@ export class RoleModulePermissionsService {
         },
       });
 
-      // Lấy các permissions tương ứng với module này
       const permissionsForModule = await this.prisma.permissions.findMany({
         where: { module_id: moduleId },
       });
