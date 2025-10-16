@@ -8,18 +8,47 @@ import { Prisma } from '@prisma/client';
 export class PermissionService {
   constructor(private prisma: PrismaService) { }
 
+  // src/permissions/permissions.service.ts
+
   async create(createPermissionDto: CreatePermissionDto) {
-    const existingPermission = await this.prisma.permissions.findFirst({
-      where: { bit_value: createPermissionDto.bit_value }
+    // Tách moduleId ra khỏi các dữ liệu còn lại của permission
+    const { module_id, ...permissionData } = createPermissionDto;
+
+    // Bạn có thể thêm bước kiểm tra xem moduleId có tồn tại trong DB không nếu cần
+    const moduleExists = await this.prisma.modules.findUnique({
+      where: { module_id: module_id },
     });
-    if (existingPermission) {
-      throw new BadRequestException('Bit value đã tồn tại.');
+
+    if (!moduleExists) {
+      throw new BadRequestException(`Module với ID "${module_id}" không tồn tại.`);
     }
+
+    // Kiểm tra xem bit_value đã được sử dụng trong module này chưa (tùy chọn)
+    if (permissionData.bit_value) {
+      const existingPermission = await this.prisma.permissions.findFirst({
+        where: {
+          module_id: module_id,
+          bit_value: permissionData.bit_value,
+        },
+      });
+
+      if (existingPermission) {
+        throw new BadRequestException(
+          `Bit value ${permissionData.bit_value} đã tồn tại trong module này.`
+        );
+      }
+    }
+
+    // Tạo permission và kết nối với module thông qua ID
     return this.prisma.permissions.create({
       data: {
-        ...createPermissionDto,
-        modules: { connect: undefined }
-      }
+        ...permissionData, // Dữ liệu của permission (name, bit_value, description)
+        modules: {         // Quan hệ tên là 'module' (số ít)
+          connect: {
+            module_id: module_id, // Kết nối với module có id này
+          },
+        },
+      },
     });
   }
 
@@ -30,8 +59,8 @@ export class PermissionService {
         name: true,
         bit_value: true,
         description: true,
-        module_id: true
-        // Không có _count ở đây
+        module_id: true,
+        modules: true
       },
     });
 
