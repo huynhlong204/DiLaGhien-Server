@@ -243,11 +243,16 @@ export class TicketsService {
      * @param dto Dữ liệu đặt vé từ client.
      * @param user Thông tin người dùng đã đăng nhập (nếu có), được cung cấp bởi OptionalJwtAuthGuard.
      */
-  async createPublicBooking(dto: CreatePublicBookingDto, user?: { customer_id: number }) {
-    const { tripId, seats, passengerInfo, pickupId, dropoffId, socketId } = dto;
+  // src/tickets/tickets.service.ts
 
-    // ✅ Bước 1: Xác định ID của khách hàng.
-    // Nếu có đối tượng `user` được truyền vào, lấy `customer_id`. Nếu không, để là `null`.
+  // ...
+
+  async createPublicBooking(dto: CreatePublicBookingDto, user?: { customer_id: number }) {
+    // payload từ frontend có totalPrice, nhưng DTO của bạn chưa có, hãy thêm vào nhé.
+    // Giả sử DTO đã được cập nhật:
+    // export class CreatePublicBookingDto { ...; totalPrice: number; }
+    const { tripId, seats, passengerInfo, pickupId, dropoffId, socketId, totalPrice } = dto;
+
     const customerId = user ? user.customer_id : null;
 
     const result = await this.prisma.$transaction(async (tx) => {
@@ -260,7 +265,7 @@ export class TicketsService {
         }
       }
 
-      const createdTickets: TicketModel[] = [];
+      const createdTickets: any[] = []; // Dùng any để chứa cả payment
       for (const seatCode of seats) {
         const existingTicket = await tx.tickets.findFirst({
           where: { trip_id: tripId, seat_code: seatCode, NOT: { status: 'CANCELLED' } }
@@ -272,13 +277,13 @@ export class TicketsService {
         const newTicket = await tx.tickets.create({
           data: {
             trip_id: tripId,
-            // ✅ Bước 2: Sử dụng customerId đã được xác định ở trên.
-            // Nó sẽ là ID của người dùng nếu họ đăng nhập, hoặc là NULL nếu là khách.
             customer_id: customerId,
             seat_code: seatCode,
-            status: 'RESERVED',
+            // Cập nhật trạng thái phù hợp hơn, ví dụ: CONFIRMED
+            status: 'CONFIRMED',
             code: await generateUniqueTicketCode(tx),
             booking_time: new Date(),
+            final_amount: totalPrice / seats.length, // Thêm giá tiền cho mỗi vé
             ticket_details: {
               create: {
                 passenger_name: passengerInfo.fullName,
@@ -293,7 +298,17 @@ export class TicketsService {
                 status: 'PENDING',
               },
             },
+            // Tạo luôn payment cho phương thức "Thanh toán khi lên xe"
+            payments: {
+              create: {
+                method: 'ON_BOARD', // Hoặc 'CASH'
+                amount: totalPrice / seats.length,
+                status: 'PENDING', // Trạng thái chờ thanh toán
+                transaction_id: `ONBOARD_${Date.now()}_${seatCode}`,
+              }
+            }
           },
+          include: { payments: true } // Lấy luôn thông tin payment
         });
         createdTickets.push(newTicket);
       }

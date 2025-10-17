@@ -32,9 +32,11 @@ export class PaymentController {
     }
 
     @Get('vnpay_return')
-    vnpayReturn(@Query() vnpayParams: any, @Res() res: Response) {
+    // Thêm async
+    async vnpayReturn(@Query() vnpayParams: any, @Res() res: Response) {
         this.logger.log('Received VNPay return with params:', vnpayParams);
-        const result = this.paymentService.handleVnpayCallback(vnpayParams);
+        // Thêm await
+        const result = await this.paymentService.handleVnpayCallback(vnpayParams);
         const frontendResultUrl = this.configService.get<string>('FRONTEND_RESULT_URL');
 
         if (!frontendResultUrl) {
@@ -42,7 +44,8 @@ export class PaymentController {
             return;
         }
 
-        if (result.isValidSignature && vnpayParams['vnp_ResponseCode'] === '00') {
+        // Dùng result.RspCode thay vì vnpayParams['vnp_ResponseCode'] để đảm bảo logic nhất quán
+        if (result.isValidSignature && result.RspCode === '00') {
             res.redirect(`${frontendResultUrl}?success=true&orderId=${vnpayParams['vnp_TxnRef']}`);
         } else {
             res.redirect(`${frontendResultUrl}?success=false&orderId=${vnpayParams['vnp_TxnRef']}`);
@@ -50,9 +53,11 @@ export class PaymentController {
     }
 
     @Get('vnpay_ipn')
-    vnpayIpn(@Query() vnpayParams: any, @Res() res: Response) {
+    // Thêm async
+    async vnpayIpn(@Query() vnpayParams: any, @Res() res: Response) {
         this.logger.log('Received VNPay IPN with params:', vnpayParams);
-        const result = this.paymentService.handleVnpayCallback(vnpayParams);
+        // Thêm await
+        const result = await this.paymentService.handleVnpayCallback(vnpayParams);
         res.status(200).json({ RspCode: result.RspCode, Message: result.Message });
     }
 }

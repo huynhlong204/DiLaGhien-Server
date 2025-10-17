@@ -42,4 +42,7 @@ export class CreatePublicBookingDto {
     // Dùng để xác thực người đang giữ ghế
     @IsString()
     socketId: string;
+
+    @IsNumber()
+    totalPrice: number
 }
