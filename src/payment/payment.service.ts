@@ -6,9 +6,8 @@ import * as crypto from 'crypto';
 import * as moment from 'moment-timezone';
 import { InjectRedis } from '@nestjs-modules/ioredis';
 import { Redis } from 'ioredis';
-import { InjectQueue } from '@nestjs/bull';
-import { Queue } from 'bull';
 import { TicketsService } from '../modules/tickets/tickets.service';
+import { MailerService } from '@nestjs-modules/mailer';
 
 @Injectable()
 export class PaymentService {
@@ -18,8 +17,8 @@ export class PaymentService {
         private readonly configService: ConfigService,
         private readonly prisma: PrismaService,
         @InjectRedis() private readonly redis: Redis,
-        @InjectQueue('email') private readonly emailQueue: Queue,
-        private readonly ticketsService: TicketsService, // Service được inject để xử lý logic vé
+        private readonly ticketsService: TicketsService,
+        private readonly mailerService: MailerService,
     ) { }
 
     async createVnpayPaymentUrl(payload: any, ipAddr: string): Promise<string> {
@@ -40,8 +39,7 @@ export class PaymentService {
         const amount = payload.totalPrice;
 
         try {
-            // Lưu payload vào Redis, sẽ được sử dụng lại ở hàm callback
-            await this.redis.set(`booking:${orderId}`, JSON.stringify(payload), 'EX', 900); // 15 phút
+            await this.redis.set(`booking:${orderId}`, JSON.stringify(payload), 'EX', 900);
             this.logger.log(`Saved pending booking info to Redis for Order [${orderId}]`);
         } catch (error) {
             this.logger.error(`Failed to save pending booking to Redis for Order [${orderId}]`, error);
@@ -68,7 +66,6 @@ export class PaymentService {
         const hmac = crypto.createHmac("sha512", secretKey);
         const signed = hmac.update(Buffer.from(signData, 'utf-8')).digest("hex");
         sortedParams['vnp_SecureHash'] = signed;
-
         vnpUrl += '?' + qs.stringify(sortedParams, { encode: false });
 
         return vnpUrl;
@@ -111,32 +108,51 @@ export class PaymentService {
             }
 
             if (responseCode === '00') {
-                // TÁI CẤU TRÚC: Gọi TicketsService để tạo vé, thay vì xử lý logic ở đây
                 const result = await this.ticketsService.createTicketsAfterPayment(payload, orderId);
 
-                // Đẩy job gửi email vào queue sau khi đã có kết quả từ TicketsService
                 if (result && result.tickets.length > 0) {
-                    await this.emailQueue.add('sendBookingConfirmation', {
-                        tickets: result.tickets,
-                        passengerEmail: payload.passengerInfo.email,
-                    });
-                    this.logger.log(`Dispatched email job for order ${orderId} to queue.`);
+                    this.logger.log(`Attempting to send email directly for order ${orderId}...`);
+                    try {
+                        // PHIÊN BẢN FORMAT CUỐI CÙNG - GỌN GÀNG VÀ CHÍNH XÁC
+                        const formattedTickets = result.tickets.map(ticket => ({
+                            ...ticket,
+                            formattedPrice: new Intl.NumberFormat('vi-VN').format(ticket.final_amount ?? 0),
+                            paymentDateFormatted: moment(ticket.payments?.[0]?.payment_time).tz('Asia/Ho_Chi_Minh').format('HH:mm DD/MM/YYYY'),
+                            departureTimeFormatted: moment(ticket.trips.departure_time).tz('Asia/Ho_Chi_Minh').format('HH:mm'),
+                            departureDateFormatted: moment(ticket.trips.departure_time).tz('Asia/Ho_Chi_Minh').format('DD/MM/YYYY'),
+                        }));
+
+                        const totalAmount = formattedTickets.reduce((sum, t) => sum + (t.final_amount ?? 0), 0);
+
+                        await this.mailerService.sendMail({
+                            to: payload.passengerInfo.email,
+                            subject: `Xác nhận đặt vé thành công - Mã vé [${formattedTickets.map(t => t.code).join(', ')}]`,
+                            template: './booking-confirmation',
+                            context: {
+                                tickets: formattedTickets,
+                                passenger: formattedTickets[0].ticket_details,
+                                order: {
+                                    code: orderId, // Dùng orderId từ VNPAY cho nhất quán
+                                    total_amount: new Intl.NumberFormat('vi-VN').format(totalAmount),
+                                }
+                            },
+                        });
+                        this.logger.log(`✅ Email sent successfully for order ${orderId}.`);
+                    } catch (emailError) {
+                        this.logger.error(`❌ FAILED TO SEND EMAIL for order ${orderId}:`, emailError);
+                    }
                 }
 
                 await this.redis.del(`booking:${orderId}`);
                 this.logger.log(`Successfully processed booking and tickets for Order [${orderId}]`);
                 return { RspCode: '00', Message: 'Confirm Success', isValidSignature: true };
-
             } else {
-                // Thanh toán thất bại
                 await this.redis.del(`booking:${orderId}`);
                 this.logger.log(`Payment failed for order ${orderId}. Removed from Redis.`);
                 return { RspCode: responseCode, Message: 'Payment Failed', isValidSignature: true };
             }
-
         } catch (error) {
             this.logger.error(`Error processing callback for order ${orderId}`, error);
-            // Cân nhắc thêm logic hoàn tiền VNPAY ở đây nếu có lỗi sau khi đã thanh toán
             return { RspCode: '99', Message: 'Unknown error', isValidSignature: true };
         }
     }
@@ -145,7 +161,7 @@ export class PaymentService {
         const sorted: Record<string, any> = {};
         const str: string[] = [];
         for (const key in obj) {
-            if (obj.hasOwnProperty(key)) {
+            if (Object.prototype.hasOwnProperty.call(obj, key)) {
                 str.push(encodeURIComponent(key));
             }
         }

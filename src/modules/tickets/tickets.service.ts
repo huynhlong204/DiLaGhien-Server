@@ -29,7 +29,7 @@ export class TicketsService {
 
   async createTicketsAfterPayment(payload: any, orderId: string) {
     const { tripId, seats, passengerInfo, totalPrice } = payload;
-    const customerId = payload.customerId || null; // Lấy customerId nếu có
+    const customerId = payload.customerId || null;
 
     const createdTicketsWithDetails = await this.prisma.$transaction(async (tx) => {
       const createdTickets: any[] = [];
@@ -50,7 +50,14 @@ export class TicketsService {
             code: await generateUniqueTicketCode(tx),
             booking_time: new Date(),
             final_amount: totalPrice / seats.length,
-            ticket_details: { create: { ...passengerInfo } },
+            // FIX: Ánh xạ lại tên trường cho đúng với Prisma Schema
+            ticket_details: {
+              create: {
+                passenger_name: passengerInfo.fullName,
+                passenger_phone: passengerInfo.phone,
+                passenger_email: passengerInfo.email,
+              },
+            },
             payments: {
               create: {
                 method: 'VNPAY',
@@ -64,21 +71,34 @@ export class TicketsService {
         createdTickets.push(newTicket);
       }
 
-      // Query lại để lấy đủ thông tin quan hệ cho email
       const ticketIds = createdTickets.map(t => t.id);
       return tx.tickets.findMany({
         where: { id: { in: ticketIds } },
         include: {
+          ticket_details: true,
           payments: true,
-          trips: { include: { routes: true, vehicles: true } },
+          trips: {
+            include: {
+              company_route: {
+                include: {
+                  routes: {
+                    include: {
+                      from_location: true, // Lấy thông tin nơi đi
+                      to_location: true,   // Lấy thông tin nơi đến
+                    },
+                  },
+                },
+              }
+            },
+          },
         },
       });
     });
 
-    // Gửi update qua websocket cho các vé đã tạo thành công
     createdTicketsWithDetails.forEach(ticket => {
       const holdKey = `hold:trip:${tripId}:seat:${ticket.seat_code}`;
-      this.redis.del(holdKey); // Xóa key giữ ghế
+      this.redis.del(holdKey);
+
       this.ticketsGateway.emitSeatUpdate(tripId, ticket);
     });
 

@@ -4,91 +4,196 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Xác nhận vé xe khách</title>
+    <title>Vé Điện Tử Của Bạn</title>
+    <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;700&display=swap" rel="stylesheet">
     <style>
+        body,
+        table,
+        td,
+        a {
+            -webkit-text-size-adjust: 100%;
+            -ms-text-size-adjust: 100%;
+        }
+
+        table,
+        td {
+            mso-table-lspace: 0pt;
+            mso-table-rspace: 0pt;
+        }
+
+        img {
+            -ms-interpolation-mode: bicubic;
+            border: 0;
+            height: auto;
+            line-height: 100%;
+            outline: none;
+            text-decoration: none;
+        }
+
+        table {
+            border-collapse: collapse !important;
+        }
+
         body {
-            font-family: Arial, sans-serif;
-            background-color: #f9f9f9;
-            margin: 0;
-            padding: 0;
+            height: 100% !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            width: 100% !important;
+            background-color: #f7f8fa;
+            font-family: 'Be Vietnam Pro', Arial, sans-serif;
         }
 
-        .container {
-            max-width: 400px;
-            margin: 20px auto;
-            padding: 20px;
-            background-color: #fff;
-            border: 1px solid #ddd;
-            border-radius: 5px;
-        }
-
-        .header {
-            text-align: center;
-            margin-bottom: 20px;
-            background-color: #f60;
-            padding: 10px;
-            color: white;
-        }
-
-        .header img {
-            max-width: 150px;
-        }
-
-        .header p {
-            margin: 5px 0;
-            font-size: 12px;
-        }
-
-        .ticket {
-            margin-bottom: 20px;
-            padding: 15px;
-            border: 1px solid #ddd;
-            border-radius: 5px;
-            background-color: #fefefe;
-        }
-
-        .ticket p {
-            margin: 8px 0;
-            font-size: 14px;
-        }
-
-        .footer {
-            text-align: center;
-            font-size: 14px;
-            font-style: italic;
-            margin-top: 20px;
-            color: #555;
+        a[x-apple-data-detectors] {
+            color: inherit !important;
+            text-decoration: none !important;
+            font-size: inherit !important;
+            font-family: inherit !important;
+            font-weight: inherit !important;
+            line-height: inherit !important;
         }
     </style>
 </head>
 
-<body>
-    <div class="container">
-        <div class="header">
-            <img src="https://cdn.bookaway.com/media/files/5d381c2a9096d230a948f0fd.png?quality=90&height=120"
-                alt="Logo">
-            <p>Địa chỉ: Số 01 Tô Hiến Thành, Phường 3, TP. Đà Lạt, Lâm Đồng</p>
-            <p>Email: hotro@futa.vn | Điện thoại: 02838386852</p>
-        </div>
-
-        <h2 style="text-align: center;">Xác Nhận Đặt Vé Thành Công</h2>
-
-        {{#each tickets}}
-        <div class="ticket">
-            <p><strong>Mã vé:</strong> {{this.code}}</p>
-            <p><strong>Nơi đi:</strong> {{this.trip.route.departure}}</p>
-            <p><strong>Nơi đến:</strong> {{this.trip.route.destination}}</p>
-            <p><strong>Số ghế:</strong> {{this.seat_code}}</p>
-            <p><strong>Giá vé:</strong> {{this.formattedPrice}} VNĐ</p>
-            <p><strong>Biển số xe:</strong> {{this.trip.bus.license_plate}}</p>
-            <p><strong>Giờ xuất bến:</strong> {{this.trip.departureTimeFormatted}}</p>
-            <p><strong>Ngày đi:</strong> {{this.trip.departureDateFormatted}}</p>
-            <p><strong>Ngày đặt vé:</strong> {{this.paymentDateFormatted}}</p>
-        </div>
-        {{/each}}
-
-        <p class="footer">(Vui lòng xuất trình vé trước khi lên xe và đến điểm đi trước 30 phút)</p>
+<body style="margin: 0 !important; padding: 0 !important;">
+    <div
+        style="display: none; font-size: 1px; color: #fefefe; line-height: 1px; max-height: 0px; max-width: 0px; opacity: 0; overflow: hidden;">
+        Mã đơn hàng {{order.code}} - Cảm ơn bạn đã đặt vé!
     </div>
+
+    <table border="0" cellpadding="0" cellspacing="0" width="100%">
+        <tr>
+            <td align="center" style="background-color: #f7f8fa; padding: 20px 0;">
+                <table border="0" cellpadding="0" cellspacing="0" width="100%" style="max-width: 600px;">
+                    <tr>
+                        <td align="center" valign="top">
+                            <img alt="Logo DiLaGhien"
+                                src="https://dilaghien.vercel.app/_next/image?url=%2Flogo.webp&w=256&q=75" width="150"
+                                style="display: block; width: 150px;" border="0">
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+        <tr>
+            <td align="center" style="background-color: #f7f8fa; padding: 0 15px 40px 15px;">
+                <table border="0" cellpadding="0" cellspacing="0" width="100%"
+                    style="max-width: 600px; background-color: #ffffff; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.05);">
+                    <tr>
+                        <td align="center" style="padding: 40px 30px 10px 30px;">
+                            <img src="https://img.icons8.com/?size=1200&id=63312&format=jpg" width="60" height="60"
+                                alt="Success Icon" style="margin-bottom: 15px;">
+                            <h1
+                                style="font-family: 'Be Vietnam Pro', Arial, sans-serif; font-size: 26px; font-weight: 700; color: #1e293b; margin: 0 0 10px 0;">
+                                Đặt vé thành công!
+                            </h1>
+                            <p
+                                style="font-family: 'Be Vietnam Pro', Arial, sans-serif; font-size: 16px; line-height: 24px; color: #64748b; margin: 0;">
+                                Cảm ơn quý khách <strong style="color: #0c4a6e;">{{passenger.passenger_name}}</strong>
+                                đã tin tưởng. Dưới đây là thông tin vé điện tử của bạn.
+                            </p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 20px 30px;">
+                            <table width="100%" border="0" cellspacing="0" cellpadding="0"
+                                style="background-color: #f8fafc; border-radius: 8px; border: 1px solid #e2e8f0;">
+                                <tr>
+                                    <td
+                                        style="padding: 20px; font-family: 'Be Vietnam Pro', Arial, sans-serif; font-size: 14px; color: #475569;">
+                                        <p style="margin: 0 0 10px 0;">Mã đơn hàng: <span
+                                                style="font-weight: 700; color: #0c4a6e;">{{order.code}}</span></p>
+                                        <p style="margin: 0;">Tổng thanh toán: <span
+                                                style="font-weight: 700; font-size: 16px; color: #1d4ed8;">{{order.total_amount}}
+                                                VNĐ</span></p>
+                                    </td>
+                                </tr>
+                            </table>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td align="left"
+                            style="padding: 10px 30px 10px; font-family: 'Be Vietnam Pro', Arial, sans-serif; font-size: 18px; font-weight: 700; color: #1e293b;">
+                            Chi tiết vé
+                        </td>
+                    </tr>
+                    {{#each tickets}}
+                    <tr>
+                        <td style="padding: 10px 30px 20px 30px;">
+                            <table width="100%" border="0" cellspacing="0" cellpadding="0"
+                                style="border: 1px solid #e2e8f0; border-radius: 8px;">
+                                <tr>
+                                    <td
+                                        style="padding: 15px 20px; background-color: #f1f5f9; border-bottom: 1px solid #e2e8f0; border-radius: 8px 8px 0 0;">
+                                        <p
+                                            style="margin: 0; font-family: 'Be Vietnam Pro', Arial, sans-serif; font-size: 14px; font-weight: 700; color: #334155;">
+                                            Mã vé: {{this.code}}
+                                        </p>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td style="padding: 20px; font-family: 'Be Vietnam Pro', Arial, sans-serif;">
+                                        <p
+                                            style="margin: 0 0 15px 0; font-size: 16px; font-weight: 700; color: #1e293b;">
+                                            {{this.trips.company_route.routes.from_location.name}} →
+                                            {{this.trips.company_route.routes.to_location.name}}
+                                        </p>
+                                        <p
+                                            style="margin: 0 0 10px 0; font-size: 14px; color: #475569; line-height: 22px;">
+                                            <img src="https://cdn-icons-png.flaticon.com/512/109/109613.png" width="16"
+                                                height="16" style="vertical-align: middle; margin-right: 8px;"
+                                                alt="Calendar">
+                                            Ngày đi: <span
+                                                style="font-weight: 700; color: #1e293b;">{{this.departureDateFormatted}}</span>
+                                        </p>
+                                        <p
+                                            style="margin: 0 0 10px 0; font-size: 14px; color: #475569; line-height: 22px;">
+                                            <img src="https://icons.veryicon.com/png/o/commerce-shopping/jkd_wap/clock-137.png"
+                                                width="16" height="16"
+                                                style="vertical-align: middle; margin-right: 8px;" alt="Clock">
+                                            Giờ khởi hành: <span
+                                                style="font-weight: 700; color: #c2410c;">{{this.departureTimeFormatted}}</span>
+                                        </p>
+                                        <p
+                                            style="margin: 0 0 10px 0; font-size: 14px; color: #475569; line-height: 22px;">
+                                            <img src="https://static.vecteezy.com/system/resources/previews/034/370/615/non_2x/chair-silhouette-icon-seat-vector.jpg"
+                                                width="16" height="16"
+                                                style="vertical-align: middle; margin-right: 8px;" alt="Seat">
+                                            Số ghế: <span
+                                                style="background-color: #e2e8f0; padding: 3px 8px; border-radius: 4px; font-weight: 700; color: #1e293b;">{{this.seat_code}}</span>
+                                        </p>
+
+                                    </td>
+                                </tr>
+                            </table>
+                        </td>
+                    </tr>
+                    {{/each}}
+                    <tr>
+                        <td style="padding: 10px 30px 40px 30px;" align="center">
+                            <a href="https://dilaghien.vercel.app/my-tickets" target="_blank"
+                                style="display: inline-block; background-color: #2563eb; color: #ffffff; font-family: 'Be Vietnam Pro', Arial, sans-serif; font-size: 14px; font-weight: 700; text-decoration: none; padding: 14px 25px; border-radius: 8px;">
+                                Quản lý vé của bạn
+                            </a>
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+        <tr>
+            <td align="center" style="background-color: #f7f8fa; padding: 30px 15px;">
+                <table border="0" cellpadding="0" cellspacing="0" width="100%" style="max-width: 600px;">
+                    <tr>
+                        <td align="center"
+                            style="font-family: 'Be Vietnam Pro', Arial, sans-serif; font-size: 13px; line-height: 20px; color: #94a3b8;">
+                            <p style="margin: 0 0 5px 0;">Bạn nhận được email này vì đã đặt vé tại hệ thống DiLaGhien.
+                            </p>
+                            <p style="margin: 0;"><strong>DiLaGhien</strong><br>TP. Hồ Chí Minh</p>
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
 </body>
 
 </html>
