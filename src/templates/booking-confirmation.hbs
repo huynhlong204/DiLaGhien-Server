@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="vi">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Xác nhận vé xe khách</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f9f9f9;
+            margin: 0;
+            padding: 0;
+        }
+
+        .container {
+            max-width: 400px;
+            margin: 20px auto;
+            padding: 20px;
+            background-color: #fff;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 20px;
+            background-color: #f60;
+            padding: 10px;
+            color: white;
+        }
+
+        .header img {
+            max-width: 150px;
+        }
+
+        .header p {
+            margin: 5px 0;
+            font-size: 12px;
+        }
+
+        .ticket {
+            margin-bottom: 20px;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            background-color: #fefefe;
+        }
+
+        .ticket p {
+            margin: 8px 0;
+            font-size: 14px;
+        }
+
+        .footer {
+            text-align: center;
+            font-size: 14px;
+            font-style: italic;
+            margin-top: 20px;
+            color: #555;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div class="header">
+            <img src="https://cdn.bookaway.com/media/files/5d381c2a9096d230a948f0fd.png?quality=90&height=120"
+                alt="Logo">
+            <p>Địa chỉ: Số 01 Tô Hiến Thành, Phường 3, TP. Đà Lạt, Lâm Đồng</p>
+            <p>Email: hotro@futa.vn | Điện thoại: 02838386852</p>
+        </div>
+
+        <h2 style="text-align: center;">Xác Nhận Đặt Vé Thành Công</h2>
+
+        {{#each tickets}}
+        <div class="ticket">
+            <p><strong>Mã vé:</strong> {{this.code}}</p>
+            <p><strong>Nơi đi:</strong> {{this.trip.route.departure}}</p>
+            <p><strong>Nơi đến:</strong> {{this.trip.route.destination}}</p>
+            <p><strong>Số ghế:</strong> {{this.seat_code}}</p>
+            <p><strong>Giá vé:</strong> {{this.formattedPrice}} VNĐ</p>
+            <p><strong>Biển số xe:</strong> {{this.trip.bus.license_plate}}</p>
+            <p><strong>Giờ xuất bến:</strong> {{this.trip.departureTimeFormatted}}</p>
+            <p><strong>Ngày đi:</strong> {{this.trip.departureDateFormatted}}</p>
+            <p><strong>Ngày đặt vé:</strong> {{this.paymentDateFormatted}}</p>
+        </div>
+        {{/each}}
+
+        <p class="footer">(Vui lòng xuất trình vé trước khi lên xe và đến điểm đi trước 30 phút)</p>
+    </div>
+</body>
+
+</html>

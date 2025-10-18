@@ -7,8 +7,9 @@ import { TicketsGateway } from './tickets.gateway';
 import { TripClientModule } from '../trip-client/trip-client.module';
 
 @Module({
-  imports: [PrismaModule],
+  imports: [PrismaModule,],
   controllers: [TicketsController],
   providers: [TicketsService, TicketsGateway],
+  exports: [TicketsService]
 })
 export class TicketsModule { }

@@ -1,5 +1,3 @@
-// src/payment/payment.controller.ts
-
 import { Controller, Post, Get, Body, Req, Res, Query, Logger } from '@nestjs/common';
 import { Request, Response } from 'express';
 import { PaymentService } from './payment.service';
@@ -23,19 +21,13 @@ export class PaymentController {
             return { statusCode: 400, message: 'Cannot determine IP address' };
         }
 
-        const paymentUrl = await this.paymentService.createVnpayPaymentUrl(
-            bookingPayload,
-            finalIpAddr,
-        );
-
+        const paymentUrl = await this.paymentService.createVnpayPaymentUrl(bookingPayload, finalIpAddr);
         return { statusCode: 200, message: 'URL created successfully', url: paymentUrl };
     }
 
     @Get('vnpay_return')
-    // Thêm async
     async vnpayReturn(@Query() vnpayParams: any, @Res() res: Response) {
         this.logger.log('Received VNPay return with params:', vnpayParams);
-        // Thêm await
         const result = await this.paymentService.handleVnpayCallback(vnpayParams);
         const frontendResultUrl = this.configService.get<string>('FRONTEND_RESULT_URL');
 
@@ -44,7 +36,6 @@ export class PaymentController {
             return;
         }
 
-        // Dùng result.RspCode thay vì vnpayParams['vnp_ResponseCode'] để đảm bảo logic nhất quán
         if (result.isValidSignature && result.RspCode === '00') {
             res.redirect(`${frontendResultUrl}?success=true&orderId=${vnpayParams['vnp_TxnRef']}`);
         } else {
@@ -53,10 +44,8 @@ export class PaymentController {
     }
 
     @Get('vnpay_ipn')
-    // Thêm async
     async vnpayIpn(@Query() vnpayParams: any, @Res() res: Response) {
         this.logger.log('Received VNPay IPN with params:', vnpayParams);
-        // Thêm await
         const result = await this.paymentService.handleVnpayCallback(vnpayParams);
         res.status(200).json({ RspCode: result.RspCode, Message: result.Message });
     }

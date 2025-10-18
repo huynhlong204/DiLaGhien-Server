@@ -13,7 +13,7 @@ async function generateUniqueTicketCode(prisma: { tickets: { findUnique: (args: 
   let code: string = 'VE';
   let isUnique = false;
   while (!isUnique) {
-    code = 'VE';
+    code = 'VEX';
     for (let i = 0; i < 8; i++) {
       code += characters.charAt(Math.floor(Math.random() * characters.length));
     }
@@ -26,6 +26,64 @@ async function generateUniqueTicketCode(prisma: { tickets: { findUnique: (args: 
 @Injectable()
 export class TicketsService {
   constructor(private prisma: PrismaService, private ticketsGateway: TicketsGateway, @InjectRedis() private readonly redis: Redis,) { }
+
+  async createTicketsAfterPayment(payload: any, orderId: string) {
+    const { tripId, seats, passengerInfo, totalPrice } = payload;
+    const customerId = payload.customerId || null; // Lấy customerId nếu có
+
+    const createdTicketsWithDetails = await this.prisma.$transaction(async (tx) => {
+      const createdTickets: any[] = [];
+      for (const seatCode of seats) {
+        const existingTicket = await tx.tickets.findFirst({
+          where: { trip_id: tripId, seat_code: seatCode, NOT: { status: 'CANCELLED' } }
+        });
+        if (existingTicket) {
+          throw new ConflictException(`Ghế ${seatCode} đã được đặt trong lúc bạn thanh toán.`);
+        }
+
+        const newTicket = await tx.tickets.create({
+          data: {
+            trip_id: tripId,
+            customer_id: customerId,
+            seat_code: seatCode,
+            status: 'CONFIRMED',
+            code: await generateUniqueTicketCode(tx),
+            booking_time: new Date(),
+            final_amount: totalPrice / seats.length,
+            ticket_details: { create: { ...passengerInfo } },
+            payments: {
+              create: {
+                method: 'VNPAY',
+                amount: totalPrice / seats.length,
+                status: 'SUCCESS',
+                transaction_id: `${orderId}_${seatCode}`,
+              },
+            },
+          },
+        });
+        createdTickets.push(newTicket);
+      }
+
+      // Query lại để lấy đủ thông tin quan hệ cho email
+      const ticketIds = createdTickets.map(t => t.id);
+      return tx.tickets.findMany({
+        where: { id: { in: ticketIds } },
+        include: {
+          payments: true,
+          trips: { include: { routes: true, vehicles: true } },
+        },
+      });
+    });
+
+    // Gửi update qua websocket cho các vé đã tạo thành công
+    createdTicketsWithDetails.forEach(ticket => {
+      const holdKey = `hold:trip:${tripId}:seat:${ticket.seat_code}`;
+      this.redis.del(holdKey); // Xóa key giữ ghế
+      this.ticketsGateway.emitSeatUpdate(tripId, ticket);
+    });
+
+    return { message: 'Tạo vé sau thanh toán thành công!', tickets: createdTicketsWithDetails };
+  }
 
   async findOne(ticketId: number) {
     const ticket = await this.prisma.tickets.findUnique({
