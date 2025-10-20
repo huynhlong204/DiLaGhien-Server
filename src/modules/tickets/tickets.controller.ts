@@ -1,5 +1,6 @@
-import { Controller, Get, Post, Body, Param, ParseIntPipe, UseGuards, Put, Request } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, ParseIntPipe, UseGuards, Put, Request, Query, Res } from '@nestjs/common';
 import { TicketsService } from './tickets.service';
+import { Response } from 'express';
 import { CreateTicketDto } from './dto/create-ticket.dto';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
@@ -62,5 +63,59 @@ export class TicketsController {
 
     // Truyền cả DTO và thông tin user (nếu có) xuống service
     return this.ticketsService.createPublicBooking(createPublicBookingDto, user);
+  }
+
+  // Lấy lịch sử đặt vé của một công ty 
+  @Get('/history/company/:companyId')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.OWNER)
+  getBookingHistoryByCompany(
+    @Param('companyId', ParseIntPipe) companyId: number,
+    // Thêm query params cho phân trang, với giá trị mặc định
+    @Query('page', new ParseIntPipe({ optional: true })) page: number = 1,
+    @Query('limit', new ParseIntPipe({ optional: true })) limit: number = 10,
+    @Query('search') search?: string,
+  ) {
+    return this.ticketsService.getTicketsByCompany(companyId, { page, limit }, search);
+  }
+
+  /**
+   *  Xuất lịch sử đặt vé ra file CSV
+   */
+  @Get('/history/company/:companyId/export')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.OWNER)
+  async exportBookingHistoryByCompany(
+    @Param('companyId', ParseIntPipe) companyId: number,
+    @Query('search') search: string | undefined,
+    @Res() res: Response,
+  ) {
+    const { fileBuffer, companyName } = await this.ticketsService.exportTicketsByCompany(companyId, search);
+
+    const sanitizedCompanyName = companyName.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, '-').toLowerCase();
+
+    const fileName = `lich-su-dat-ve-${sanitizedCompanyName}-${new Date().toISOString().split('T')[0]}.xlsx`;
+
+    res.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.header('Content-Disposition', `attachment; filename="${fileName}"`);
+    res.send(fileBuffer);
+  }
+
+  /**
+   * ENDPOINT MỚI: Xuất danh sách hành khách của một chuyến đi ra file Excel
+   */
+  @Get('/trip/:tripId/export')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.OWNER)
+  async exportTicketsByTrip(
+    @Param('tripId', ParseIntPipe) tripId: number,
+    @Res() res: Response,
+  ) {
+    const { fileBuffer, fileName } = await this.ticketsService.exportTicketsByTrip(tripId);
+
+    res.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.header('Content-Disposition', `attachment; filename="${fileName}"`);
+
+    res.send(fileBuffer);
   }
 }

@@ -6,7 +6,12 @@ import { TicketsGateway } from './tickets.gateway';
 import { Redis } from 'ioredis';
 import { InjectRedis } from '@nestjs-modules/ioredis';
 import { CreatePublicBookingDto } from './dto/create-public-booking.dto';
-import { tickets as TicketModel } from '@prisma/client';
+import { Prisma, tickets as TicketModel } from '@prisma/client';
+import { Buffer } from 'buffer';
+import { format, parseISO } from 'date-fns';
+import { vi } from 'date-fns/locale';
+import * as ExcelJS from 'exceljs';
+import axios from 'axios';
 
 async function generateUniqueTicketCode(prisma: { tickets: { findUnique: (args: { where: { code: string } }) => Promise<any> } }): Promise<string> {
   const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
@@ -50,7 +55,6 @@ export class TicketsService {
             code: await generateUniqueTicketCode(tx),
             booking_time: new Date(),
             final_amount: totalPrice / seats.length,
-            // FIX: Ánh xạ lại tên trường cho đúng với Prisma Schema
             ticket_details: {
               create: {
                 passenger_name: passengerInfo.fullName,
@@ -180,7 +184,7 @@ export class TicketsService {
         status: true,
         tickets: {
           where: { status: { not: 'CANCELLED' } },
-          include: { ticket_details: true },
+          include: { ticket_details: true, payments: true },
         },
       },
     });
@@ -192,18 +196,130 @@ export class TicketsService {
   }
 
   /**
+   * Lấy lịch sử đặt vé của một nhà xe
+   */
+
+  async getTicketsByCompany(
+    companyId: number,
+    options: { page: number; limit: number },
+    search?: string
+  ) {
+    const { page, limit } = options;
+    const skip = (page - 1) * limit;
+
+    const whereClause: any = {
+      trips: {
+        company_route: {
+          company_id: companyId,
+        },
+      },
+    };
+
+    if (search) {
+      whereClause.OR = [
+        { code: { contains: search, mode: 'insensitive' } },
+        { ticket_details: { passenger_name: { contains: search, mode: 'insensitive' } } },
+        { ticket_details: { passenger_phone: { contains: search, mode: 'insensitive' } } },
+      ];
+    }
+
+    // Chạy 2 câu query song song để tối ưu hiệu suất
+    const [total, tickets] = await this.prisma.$transaction([
+      this.prisma.tickets.count({
+        where: whereClause,
+      }),
+      this.prisma.tickets.findMany({
+        skip: skip,
+        take: limit,
+        where: whereClause,
+        include: {
+          ticket_details: true,
+          payments: true,
+          trips: {
+            include: {
+              company_route: {
+                include: {
+                  routes: {
+                    include: {
+                      from_location: true,
+                      to_location: true,
+                    },
+                  },
+                },
+              },
+              vehicles: true, // Thêm vehicles để lấy biển số xe
+            },
+          },
+        },
+        orderBy: {
+          booking_time: 'desc',
+        },
+      }),
+    ]);
+
+    // BƯỚC 2: Map lại dữ liệu tickets thành một cấu trúc gọn gàng hơn.
+    const mappedData = tickets.map((ticket) => {
+      const payment = ticket.payments[0];
+      const trip = ticket.trips;
+
+      return {
+        ticketId: ticket.id,
+        ticketCode: ticket.code,
+        seatCode: ticket.seat_code,
+        bookingTime: ticket.booking_time,
+        status: ticket.status,
+        passengerInfo: {
+          name: ticket.ticket_details?.passenger_name,
+          phone: ticket.ticket_details?.passenger_phone,
+          email: ticket.ticket_details?.passenger_email,
+        },
+        paymentInfo: {
+          method: payment?.method,
+          status: payment?.status,
+          amount: payment?.amount,
+        },
+        tripInfo: {
+          tripId: trip.id,
+          departureTime: trip.departure_time,
+          route: `${trip.company_route.routes.from_location.name} → ${trip.company_route.routes.to_location.name}`,
+          plateNumber: trip.vehicles?.plate_number ?? 'Chưa khởi tạo',
+        },
+      };
+    });
+
+    // BƯỚC 3: Trả về đối tượng cuối cùng bao gồm cả dữ liệu và thông tin phân trang.
+    return {
+      data: mappedData,
+      pagination: {
+        totalItems: total,
+        currentPage: page,
+        itemsPerPage: limit,
+        totalPages: Math.ceil(total / limit),
+      },
+    };
+  }
+
+  /**
    * Tạo một vé mới theo quy trình thủ công (nhân viên tạo).
    */
   async createManualTicket(dto: CreateTicketDto) {
     const { tripId, seatCode, customerInfo, paymentInfo, note, status } = dto;
-    const holdKey = `hold:trip:${tripId}:seat:${seatCode}`;
 
-    // Transaction vẫn giữ nguyên để đảm bảo toàn vẹn dữ liệu
     const result = await this.prisma.$transaction(async (tx) => {
-      const existingTicket = await tx.tickets.findUnique({
-        where: { trip_id_seat_code: { trip_id: tripId, seat_code: seatCode } },
+      // 1. Kiểm tra xem ghế đã có ai đặt chưa (ngoại trừ vé đã hủy)
+      const existingTicket = await tx.tickets.findFirst({
+        where: {
+          trip_id: tripId,
+          seat_code: seatCode,
+          NOT: { status: 'CANCELLED' }
+        },
       });
 
+      if (existingTicket) {
+        throw new ConflictException(`Ghế ${seatCode} đã được đặt.`);
+      }
+
+      // 2. Tìm hoặc tạo khách hàng (customer)
       const email = customerInfo.email?.trim() || null;
       let customer;
 
@@ -221,6 +337,7 @@ export class TicketsService {
           },
         });
       } else {
+        // Tạo customer tạm thời nếu không có email
         customer = await tx.customers.create({
           data: {
             email: `guest_${Date.now()}_${Math.random().toString(36).substring(2)}@noemail.com`,
@@ -233,49 +350,18 @@ export class TicketsService {
         });
       }
 
-      if (existingTicket && existingTicket.status === 'CANCELLED') {
-        const reusedTicket = await tx.tickets.update({
-          where: { id: existingTicket.id },
-          data: {
-            customer_id: customer.customer_id,
-            status, note,
-            booking_time: new Date(),
-            ticket_details: {
-              update: {
-                passenger_name: customerInfo.name,
-                passenger_phone: customerInfo.phone,
-                passenger_email: email,
-              },
-            },
-          },
-          include: { ticket_details: true },
-        });
-
-        await tx.payments.create({
-          data: {
-            ticket_id: reusedTicket.id,
-            amount: paymentInfo.amount,
-            method: paymentInfo.method,
-            status: paymentInfo.status,
-            transaction_id: `manual_reuse_${reusedTicket.id}_${Date.now()}`,
-          },
-        });
-
-        return { message: 'Khôi phục và đặt lại vé thành công!', ticket: reusedTicket };
-      }
-
-      if (existingTicket) {
-        throw new ConflictException(`Ghế ${seatCode} đã được đặt.`);
-      }
-
+      // 3. Tạo vé và bản ghi thanh toán trong cùng một thao tác
       const newTicketCode = await generateUniqueTicketCode(tx);
       const newTicket = await tx.tickets.create({
         data: {
           trip_id: tripId,
-          customer_id: customer.customer_id,
-          note, seat_code: seatCode, status,
+          customer_id: customer.id, // Đã sửa: customer.id
+          note,
+          seat_code: seatCode,
+          status, // Trạng thái vé (VD: 'CONFIRMED')
           booking_time: new Date(),
           code: newTicketCode,
+          final_amount: paymentInfo.amount,
           ticket_details: {
             create: {
               passenger_name: customerInfo.name,
@@ -283,36 +369,30 @@ export class TicketsService {
               passenger_email: email,
             },
           },
+          // TẠO BẢN GHI THANH TOÁN ĐI KÈM
+          payments: {
+            create: {
+              amount: paymentInfo.amount,
+              method: paymentInfo.method, // VD: 'CASH', 'TRANSFER'
+              status: paymentInfo.status, // VD: 'SUCCESS', 'PENDING'
+              transaction_id: `MANUAL_${newTicketCode}_${Date.now()}`,
+            },
+          },
         },
-        include: { ticket_details: true },
-      });
-
-      await tx.payments.create({
-        data: {
-          ticket_id: newTicket.id,
-          amount: paymentInfo.amount,
-          method: paymentInfo.method,
-          status: paymentInfo.status,
-          transaction_id: `manual_${newTicket.id}_${Date.now()}`,
+        include: {
+          ticket_details: true,
+          payments: true,
         },
       });
 
       return { message: 'Đặt vé mới thành công!', ticket: newTicket };
     });
 
-    await this.redis.del(holdKey);
-
-    // ====================================================================
-    // PHẦN TÍCH HỢP WEBSOCKET
-    // ====================================================================
-    // Sau khi transaction ở trên đã chạy thành công, `result` sẽ chứa vé mới.
-    // Ta sẽ dùng nó để phát sự kiện đi.
+    // Phát sự kiện websocket sau khi transaction thành công
     if (result && result.ticket) {
       this.ticketsGateway.emitSeatUpdate(result.ticket.trip_id, result.ticket);
     }
-    // ====================================================================
 
-    // Trả về kết quả cho HTTP request ban đầu.
     return result;
   }
 
@@ -400,5 +480,330 @@ export class TicketsService {
       this.ticketsGateway.emitSeatUpdate(tripId, { ...ticket, trip_id: tripId });
     }
     return result;
+  }
+
+  /**
+   * HÀM MỚI: Xuất dữ liệu vé của công ty ra chuỗi CSV
+   */
+  async exportTicketsByCompany(companyId: number, search?: string): Promise<{ fileBuffer: Buffer; companyName: string }> {
+    const company = await this.prisma.transport_companies.findUnique({
+      where: { id: companyId },
+      select: { name: true, avatar_url: true },
+    });
+
+    if (!company) {
+      throw new NotFoundException(`Không tìm thấy công ty với ID ${companyId}`);
+    }
+
+    const whereClause: Prisma.ticketsWhereInput = {
+      trips: {
+        company_route: { company_id: companyId },
+      },
+    };
+
+    if (search) {
+      whereClause.OR = [
+        { code: { contains: search, mode: 'insensitive' } },
+        { ticket_details: { passenger_name: { contains: search, mode: 'insensitive' } } },
+        { ticket_details: { passenger_phone: { contains: search, mode: 'insensitive' } } },
+      ];
+    }
+
+    const tickets = await this.prisma.tickets.findMany({
+      where: whereClause,
+      include: {
+        ticket_details: true,
+        payments: true,
+        trips: {
+          include: {
+            company_route: {
+              include: {
+                routes: {
+                  include: { from_location: true, to_location: true },
+                },
+              },
+            },
+            vehicles: true,
+          },
+        },
+      },
+      orderBy: { booking_time: 'desc' },
+    });
+
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet('Lịch sử đặt vé');
+
+    if (company.avatar_url) {
+      try {
+        const response = await axios.get(company.avatar_url, { responseType: 'arraybuffer' });
+        const imageId = workbook.addImage({
+          buffer: response.data,
+          extension: 'png',
+        });
+        worksheet.addImage(imageId, 'A1:B4');
+      } catch (error) {
+        console.error('Could not fetch company logo:', error);
+      }
+    }
+
+    worksheet.mergeCells('C1:N2');
+    const titleCell = worksheet.getCell('C1');
+    titleCell.value = 'LỊCH SỬ ĐẶT VÉ';
+    titleCell.font = { name: 'Arial', size: 24, bold: true };
+    titleCell.alignment = { vertical: 'middle', horizontal: 'center' };
+
+    worksheet.mergeCells('C3:N3');
+    worksheet.getCell('C3').value = `Nhà xe: ${company.name}`;
+    worksheet.getCell('C3').font = { name: 'Arial', size: 14, bold: true };
+    worksheet.getCell('C3').alignment = { horizontal: 'center' };
+
+    worksheet.mergeCells('C4:N4');
+    worksheet.getCell('C4').value = `Ngày xuất: ${format(new Date(), 'dd/MM/yyyy')}`;
+    worksheet.getCell('C4').alignment = { horizontal: 'center' };
+
+    worksheet.addRow([]);
+
+    const headerRow = worksheet.addRow([
+      'Mã vé', 'Số ghế', 'Trạng thái vé', 'Hành khách', 'Số điện thoại', 'Email',
+      'Hành trình', 'Ngày đi', 'Giờ đi', 'Biển số xe', 'Giá vé',
+      'Phương thức TT', 'Trạng thái TT', 'Ngày đặt'
+    ]);
+    headerRow.eachCell((cell) => {
+      cell.font = { bold: true };
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE0E0E0' } };
+      cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
+    });
+
+    const translateTicketStatus = (status: string | null | undefined): string => {
+      if (!status) return 'Không xác định';
+      switch (status.toUpperCase()) {
+        case 'CONFIRMED': return 'Đã xác nhận';
+        case 'CANCELLED': return 'Đã hủy';
+        case 'PENDING_PAYMENT': return 'Chờ thanh toán';
+        case 'paid': return 'Đã xác nhận';
+        default: return status;
+      }
+    };
+
+    const translatePaymentMethod = (method: string | null | undefined): string => {
+      if (!method) return 'Không xác định';
+      switch (method.toUpperCase()) {
+        case 'VNPAY': return 'VNPAY';
+        case 'ON_BOARD': return 'Khi lên xe';
+        case 'CASH': return 'Tiền mặt';
+        default: return method;
+      }
+    };
+
+    const translatePaymentStatus = (status: string | null | undefined): string => {
+      if (!status) return 'Chưa khởi tạo';
+      switch (status.toUpperCase()) {
+        case 'SUCCESS': return 'Thành công';
+        case 'PENDING': return 'Chờ xử lý';
+        case 'FAILED': return 'Thất bại';
+        default: return status;
+      }
+    };
+
+    tickets.forEach(ticket => {
+      const payment = ticket.payments[0];
+      const trip = ticket.trips;
+      worksheet.addRow([
+        ticket.code,
+        ticket.seat_code,
+        translateTicketStatus(ticket.status),
+        ticket.ticket_details?.passenger_name,
+        ticket.ticket_details?.passenger_phone,
+        ticket.ticket_details?.passenger_email,
+        `${trip.company_route.routes.from_location.name} → ${trip.company_route.routes.to_location.name}`,
+        format(trip.departure_time, 'dd/MM/yyyy', { locale: vi }),
+        format(trip.departure_time, 'HH:mm', { locale: vi }),
+        trip.vehicles?.plate_number ?? 'N/A',
+        payment?.amount,
+        translatePaymentMethod(payment?.method),
+        translatePaymentStatus(payment?.status),
+        format(ticket.booking_time, 'HH:mm dd/MM/yyyy', { locale: vi }),
+      ]);
+    });
+
+    worksheet.getColumn(11).numFmt = '#,##0 "VNĐ"';
+
+    worksheet.columns.forEach(column => {
+      let maxLength = 0;
+      column.eachCell!({ includeEmpty: true }, (cell) => {
+        const columnLength = cell.value ? cell.value.toString().length : 10;
+        if (columnLength > maxLength) {
+          maxLength = columnLength;
+        }
+      });
+      column.width = maxLength < 10 ? 10 : maxLength + 2;
+    });
+
+    const fileBuffer = await workbook.xlsx.writeBuffer();
+    return {
+      fileBuffer: fileBuffer as unknown as Buffer,
+      companyName: company.name,
+    };
+  }
+
+  /**
+   * HÀM MỚI: Xuất danh sách vé của một chuyến đi ra file Excel
+   */
+  async exportTicketsByTrip(tripId: number): Promise<{ fileBuffer: Buffer; fileName: string }> {
+    // 1. Lấy dữ liệu chi tiết của chuyến đi
+    const tripWithTickets = await this.prisma.trips.findUnique({
+      where: { id: tripId },
+      include: {
+        company_route: {
+          include: {
+            routes: {
+              include: { from_location: true, to_location: true },
+            },
+            transport_companies: {
+              select: { name: true, avatar_url: true }
+            }
+          },
+        },
+        vehicles: true,
+        tickets: {
+          where: { status: { not: 'CANCELLED' } },
+          include: { ticket_details: true, payments: true },
+          orderBy: { seat_code: 'asc' }
+        },
+      },
+    });
+
+    if (!tripWithTickets) {
+      throw new NotFoundException(`Không tìm thấy chuyến đi với ID ${tripId}.`);
+    }
+
+    const company = tripWithTickets.company_route.transport_companies;
+    const tickets = tripWithTickets.tickets;
+
+    // 2. Khởi tạo Workbook và Worksheet
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet('Danh sách hành khách');
+
+    // Thiết lập trang in để vừa khổ A4
+    worksheet.pageSetup = {
+      paperSize: 9,
+      orientation: 'landscape',
+      fitToWidth: 1,
+      fitToHeight: 0,
+      margins: {
+        left: 0.5, right: 0.5, top: 0.7, bottom: 0.7, header: 0.3, footer: 0.3
+      }
+    };
+
+    // 3. Thêm logo
+    if (company.avatar_url) {
+      try {
+        const response = await axios.get(company.avatar_url, { responseType: 'arraybuffer' });
+        const imageId = workbook.addImage({
+          buffer: response.data,
+          extension: 'png'
+        });
+        worksheet.addImage(imageId, 'A1:B4');
+      } catch (error) {
+        console.error('Could not fetch company logo:', error);
+      }
+    }
+
+    // 4. Thêm tiêu đề
+    worksheet.mergeCells('C1:H2');
+    const titleCell = worksheet.getCell('C1');
+    titleCell.value = 'DANH SÁCH HÀNH KHÁCH';
+    titleCell.font = { name: 'Arial', size: 24, bold: true };
+    titleCell.alignment = { vertical: 'middle', horizontal: 'center' };
+
+    const route = tripWithTickets.company_route.routes;
+    worksheet.mergeCells('C3:H3');
+    worksheet.getCell('C3').value = `Hành trình: ${route.from_location.name} → ${route.to_location.name}`;
+    worksheet.getCell('C3').font = { name: 'Arial', size: 12, bold: true };
+    worksheet.getCell('C3').alignment = { horizontal: 'center' };
+
+    worksheet.mergeCells('C4:H4');
+    worksheet.getCell('C4').value = `Khởi hành: ${format(tripWithTickets.departure_time, 'HH:mm dd/MM/yyyy', { locale: vi })} - Biển số xe: ${tripWithTickets.vehicles?.plate_number ?? 'N/A'}`;
+    worksheet.getCell('C4').font = { name: 'Arial', size: 12 };
+    worksheet.getCell('C4').alignment = { horizontal: 'center' };
+
+    worksheet.addRow([]);
+
+    // 5. Thêm header
+    const headerRow = worksheet.addRow([
+      'STT', 'Mã vé', 'Số ghế', 'Tên hành khách', 'Số điện thoại', 'Phương thức TT', 'Số tiền', 'Ghi chú',
+    ]);
+    headerRow.height = 30;
+    headerRow.alignment = { vertical: 'middle' };
+
+    headerRow.eachCell((cell) => {
+      cell.font = { name: 'Arial', bold: true, color: { argb: 'FFFFFFFF' }, size: 12 };
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4CAF50' } };
+      cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
+    });
+
+    const translatePaymentMethod = (method: string | null | undefined): string => {
+      if (!method) return 'N/A';
+      switch (method.toUpperCase()) {
+        case 'VNPAY': return 'VNPAY';
+        case 'ON_BOARD': return 'Khi lên xe';
+        case 'CASH': return 'Tiền mặt';
+        default: return method;
+      }
+    };
+
+    // 6. Thêm dữ liệu
+    tickets.forEach((ticket, index) => {
+      const payment = ticket.payments[0];
+      const rowData = [
+        index + 1,
+        ticket.code,
+        ticket.seat_code,
+        ticket.ticket_details?.passenger_name,
+        ticket.ticket_details?.passenger_phone,
+        translatePaymentMethod(payment?.method),
+        payment?.amount,
+        ticket.note,
+      ];
+
+      const dataRow = worksheet.addRow(rowData);
+      dataRow.height = 25;
+      dataRow.alignment = { vertical: 'middle', wrapText: true };
+      dataRow.font = { name: 'Arial', size: 12 };
+
+      dataRow.eachCell({ includeEmpty: true }, (cell) => {
+        cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
+      });
+    });
+
+    worksheet.getColumn('G').numFmt = '#,##0 "đ"';
+
+    // 7. Điều chỉnh độ rộng cột thủ công
+    worksheet.getColumn('A').width = 5;    // STT
+    worksheet.getColumn('B').width = 16;   // Mã vé
+    worksheet.getColumn('C').width = 8;    // Số ghế
+    worksheet.getColumn('D').width = 22;   // Tên hành khách
+    worksheet.getColumn('E').width = 14;   // Số điện thoại
+    worksheet.getColumn('F').width = 14;   // Phương thức TT
+    worksheet.getColumn('G').width = 14;   // Số tiền
+    worksheet.getColumn('H').width = 25;   // Ghi chú
+
+    // 8. Tạo buffer và tên file
+    const fileBuffer = await workbook.xlsx.writeBuffer();
+    const tripRoute = tripWithTickets.company_route.routes;
+    const rawRouteName = `${tripRoute.from_location.name}-den-${tripRoute.to_location.name}`;
+    const sanitizedRouteName = rawRouteName
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/đ/g, "d").replace(/Đ/g, "D")
+      .replace(/\s+/g, '-')
+      .toLowerCase()
+      .replace(/[^a-z0-9-]/g, '');
+    const fileName = `danh-sach-hanh-khach-${sanitizedRouteName}-${format(tripWithTickets.departure_time, 'yyyy-MM-dd')}.xlsx`;
+
+    return {
+      fileBuffer: fileBuffer as unknown as Buffer,
+      fileName,
+    };
   }
 }

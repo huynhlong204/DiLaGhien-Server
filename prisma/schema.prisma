@@ -284,19 +284,10 @@ model trips {
 
   company_route company_routes @relation(fields: [company_route_id], references: [id], onDelete: Cascade)
 
-  // Đã sửa thành optional (vehicles?) và onDelete: SetNull
- vehicle_type    vehicle_types? @relation("TripVehicleType", fields: [vehicle_type_id], references: [id])
+  vehicle_type    vehicle_types? @relation("TripVehicleType", fields: [vehicle_type_id], references: [id])
   vehicles vehicles? @relation(fields: [vehicle_id], references: [id], onDelete: SetNull)
   tickets  tickets[]
   driver   users?    @relation("TripDriver", fields: [driver_id], references: [user_id], onDelete: SetNull)
-
-  // Đã xóa các trường và quan hệ dư thừa sau đây
-  // transport_companies         transport_companies? @relation(fields: [transport_companiesId], references: [id])
-  // transport_companiesId       Int?
-  // seat_layout_templates       seat_layout_templates? @relation(fields: [seat_layout_templatesId], references: [id])
-  // seat_layout_templatesId     Int?
-  // routes                      routes?              @relation(fields: [routesId], references: [id])
-  // routesId                    Int?
   transport_companies     transport_companies?   @relation(fields: [transport_companiesId], references: [id])
   transport_companiesId   Int?
   seat_layout_templates   seat_layout_templates? @relation(fields: [seat_layout_templatesId], references: [id])
@@ -318,7 +309,7 @@ model tickets {
   booking_time     DateTime           @default(now()) @db.Timestamptz(6)
   status           String
   note             String?
-   final_amount Float?
+  final_amount Float?
   payments         payments[]
   shuttle_requests shuttle_requests[]
   customers        customers?         @relation(fields: [customer_id], references: [customer_id], onDelete: SetNull)
