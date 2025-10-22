@@ -23,6 +23,7 @@ const ticketSelectOptions: Prisma.ticketsSelect = {
     },
     trips: {
         select: {
+            id: true,
             departure_time: true,
             company_route: {
                 select: {
