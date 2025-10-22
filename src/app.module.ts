@@ -30,6 +30,7 @@ import { TripClientModule } from './modules/trip-client/trip-client.module';
 import { AuthUserModule } from './modules/auth-user/auth-user.module';
 import { CustomersModule } from './modules/customers/customers.module';
 import { PaymentModule } from './payment/payment.module';
+import { ReviewModule } from './modules/review/review.module';
 
 @Module({
   imports: [
@@ -110,6 +111,7 @@ import { PaymentModule } from './payment/payment.module';
     CompanyRouteStopModule,
     TicketsModule,
     PaymentModule,
+    ReviewModule,
   ],
   controllers: [AppController],
   providers: [AppService],
