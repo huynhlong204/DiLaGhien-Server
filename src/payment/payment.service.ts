@@ -1,4 +1,4 @@
-import { Injectable, Logger, InternalServerErrorException } from '@nestjs/common';
+import { Injectable, Logger, InternalServerErrorException, BadRequestException, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import * as qs from 'qs';
@@ -8,6 +8,7 @@ import { InjectRedis } from '@nestjs-modules/ioredis';
 import { Redis } from 'ioredis';
 import { TicketsService } from '../modules/tickets/tickets.service';
 import { MailerService } from '@nestjs-modules/mailer';
+import { PromotionService } from 'src/modules/promotion/promotion.service';
 
 @Injectable()
 export class PaymentService {
@@ -19,9 +20,60 @@ export class PaymentService {
         @InjectRedis() private readonly redis: Redis,
         private readonly ticketsService: TicketsService,
         private readonly mailerService: MailerService,
+        private readonly promotionService: PromotionService,
     ) { }
 
     async createVnpayPaymentUrl(payload: any, ipAddr: string): Promise<string> {
+        const { tripId, seats, totalPrice, promotion_code: promotionCode } = payload;
+
+        // 1. Lấy thông tin chuyến đi
+        const trip = await this.prisma.trips.findUnique({
+            where: { id: tripId },
+            select: {
+                price_default: true,
+                company_route: { select: { company_id: true } }
+            }
+        });
+
+        if (!trip) {
+            throw new NotFoundException('Không tìm thấy chuyến đi.');
+        }
+
+        const companyId = trip.company_route.company_id;
+        const originalPricePerTicket = trip.price_default;
+        const totalOriginalPrice = originalPricePerTicket * seats.length;
+
+        let validatedFinalPrice = totalOriginalPrice;
+        let promotionId: number | null = null;
+
+        // 2. Xác thực mã khuyến mãi nếu có
+        if (promotionCode) {
+            try {
+                const promotion = await this.promotionService.validatePromotion(promotionCode, companyId);
+
+                let discountAmount = 0;
+                if (promotion.discount_type === 'percentage') {
+                    discountAmount = (totalOriginalPrice * promotion.discount_value) / 100;
+                } else { // fixed_amount
+                    discountAmount = promotion.discount_value;
+                }
+
+                validatedFinalPrice = totalOriginalPrice - discountAmount;
+                if (validatedFinalPrice < 0) validatedFinalPrice = 0;
+
+                promotionId = promotion.id;
+
+            } catch (e) {
+                throw new BadRequestException(`Mã khuyến mãi không hợp lệ: ${e.message}`);
+            }
+        }
+
+        // 3. KIỂM TRA AN NINH: So sánh giá
+        if (validatedFinalPrice !== totalPrice) {
+            this.logger.warn(`Price mismatch for trip ${tripId}. Calculated: ${validatedFinalPrice}, Received: ${totalPrice}`);
+            throw new BadRequestException('Giá tiền không khớp. Vui lòng thử lại.');
+        }
+
         const tmnCode = this.configService.get<string>('VNP_TMNCODE');
         const secretKey = this.configService.get<string>('VNP_HASH_SECRET');
         let vnpUrl = this.configService.get<string>('VNP_URL');
@@ -36,10 +88,16 @@ export class PaymentService {
         const date = new Date();
         const createDate = moment(date).format('YYYYMMDDHHmmss');
         const orderId = `BOOKING${moment(date).format('YYYYMMDDHHmmss')}`;
-        const amount = payload.totalPrice;
+        // const amount = payload.totalPrice;
+        const redisPayload = {
+            ...payload,
+            totalPrice: validatedFinalPrice, // Đảm bảo lưu đúng giá cuối cùng
+            originalPricePerTicket: originalPricePerTicket,
+            promotionId: promotionId,
+        };
 
         try {
-            await this.redis.set(`booking:${orderId}`, JSON.stringify(payload), 'EX', 900);
+            await this.redis.set(`booking:${orderId}`, JSON.stringify(redisPayload), 'EX', 900);
             this.logger.log(`Saved pending booking info to Redis for Order [${orderId}]`);
         } catch (error) {
             this.logger.error(`Failed to save pending booking to Redis for Order [${orderId}]`, error);
@@ -50,7 +108,7 @@ export class PaymentService {
             'vnp_Version': '2.1.0',
             'vnp_Command': 'pay',
             'vnp_TmnCode': tmnCode,
-            'vnp_Amount': amount * 100,
+            'vnp_Amount': validatedFinalPrice * 100,
             'vnp_CurrCode': 'VND',
             'vnp_TxnRef': orderId,
             'vnp_OrderInfo': `Thanh toan don hang ${orderId}`,

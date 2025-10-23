@@ -31,6 +31,7 @@ import { AuthUserModule } from './modules/auth-user/auth-user.module';
 import { CustomersModule } from './modules/customers/customers.module';
 import { PaymentModule } from './payment/payment.module';
 import { ReviewModule } from './modules/review/review.module';
+import { PromotionModule } from './modules/promotion/promotion.module';
 
 @Module({
   imports: [
@@ -112,6 +113,7 @@ import { ReviewModule } from './modules/review/review.module';
     TicketsModule,
     PaymentModule,
     ReviewModule,
+    PromotionModule,
   ],
   controllers: [AppController],
   providers: [AppService],

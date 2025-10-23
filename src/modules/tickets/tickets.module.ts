@@ -5,9 +5,10 @@ import { Prisma } from '@prisma/client';
 import { PrismaModule } from 'src/prisma/prisma.module';
 import { TicketsGateway } from './tickets.gateway';
 import { TripClientModule } from '../trip-client/trip-client.module';
+import { PromotionModule } from '../promotion/promotion.module';
 
 @Module({
-  imports: [PrismaModule,],
+  imports: [PrismaModule, PromotionModule],
   controllers: [TicketsController],
   providers: [TicketsService, TicketsGateway],
   exports: [TicketsService]

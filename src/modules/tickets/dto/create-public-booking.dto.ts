@@ -45,4 +45,8 @@ export class CreatePublicBookingDto {
 
     @IsNumber()
     totalPrice: number
+
+    @IsString()
+    @IsOptional()
+    promotion_code?: string;
 }

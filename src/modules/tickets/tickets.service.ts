@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, ConflictException, Inject, ForbiddenException } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException, Inject, ForbiddenException, BadRequestException, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service'; // Chỉnh lại đường dẫn nếu cần
 import { CreateTicketDto } from './dto/create-ticket.dto';
 import { UpdateTicketDto } from './dto/update-ticket.dto';
@@ -12,6 +12,9 @@ import { format, parseISO } from 'date-fns';
 import { vi } from 'date-fns/locale';
 import * as ExcelJS from 'exceljs';
 import axios from 'axios';
+import { PromotionService } from '../promotion/promotion.service';
+import { MailerService } from '@nestjs-modules/mailer';
+import moment from 'moment-timezone';
 
 async function generateUniqueTicketCode(prisma: { tickets: { findUnique: (args: { where: { code: string } }) => Promise<any> } }): Promise<string> {
   const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
@@ -30,11 +33,15 @@ async function generateUniqueTicketCode(prisma: { tickets: { findUnique: (args: 
 
 @Injectable()
 export class TicketsService {
-  constructor(private prisma: PrismaService, private ticketsGateway: TicketsGateway, @InjectRedis() private readonly redis: Redis,) { }
+  private readonly logger = new Logger(TicketsService.name);
+  constructor(private prisma: PrismaService, private ticketsGateway: TicketsGateway, @InjectRedis() private readonly redis: Redis,
+    private promotionService: PromotionService,
+    private readonly mailerService: MailerService,
+  ) { }
 
   async createTicketsAfterPayment(payload: any, orderId: string) {
-    const { tripId, seats, passengerInfo, totalPrice } = payload;
-    const customerId = payload.customerId || null;
+    const { tripId, seats, passengerInfo, totalPrice, customerId, originalPricePerTicket, promotionId } = payload;
+    // const customerId = payload.customerId || null;
 
     const createdTicketsWithDetails = await this.prisma.$transaction(async (tx) => {
       const createdTickets: any[] = [];
@@ -54,7 +61,9 @@ export class TicketsService {
             status: 'CONFIRMED',
             code: await generateUniqueTicketCode(tx),
             booking_time: new Date(),
+            original_price: originalPricePerTicket,
             final_amount: totalPrice / seats.length,
+            promotion_id: promotionId || null,
             ticket_details: {
               create: {
                 passenger_name: passengerInfo.fullName,
@@ -67,7 +76,7 @@ export class TicketsService {
                 method: 'VNPAY',
                 amount: totalPrice / seats.length,
                 status: 'SUCCESS',
-                transaction_id: `${orderId}_${seatCode}`,
+                transaction_id: `$VNP {orderId}_${seatCode}`,
               },
             },
           },
@@ -398,23 +407,72 @@ export class TicketsService {
 
   /**
      * Tạo vé mới cho người dùng (công khai), có xử lý cả khách vãng lai và người dùng đã đăng nhập.
+     * Áp dụng cho hình thức "Thanh toán khi lên xe".
+     * Sẽ xác thực khuyến mãi và gửi email xác nhận sau khi đặt vé thành công.
      * @param dto Dữ liệu đặt vé từ client.
      * @param user Thông tin người dùng đã đăng nhập (nếu có), được cung cấp bởi OptionalJwtAuthGuard.
      */
-  // src/tickets/tickets.service.ts
-
-  // ...
-
   async createPublicBooking(dto: CreatePublicBookingDto, user?: { customer_id: number }) {
-    // payload từ frontend có totalPrice, nhưng DTO của bạn chưa có, hãy thêm vào nhé.
-    // Giả sử DTO đã được cập nhật:
-    // export class CreatePublicBookingDto { ...; totalPrice: number; }
-    const { tripId, seats, passengerInfo, pickupId, dropoffId, socketId, totalPrice } = dto;
+    const { tripId, seats, passengerInfo, pickupId, dropoffId, socketId, totalPrice, promotion_code } = dto;
 
     const customerId = user ? user.customer_id : null;
 
+    // --- BƯỚC 1: XÁC THỰC GIÁ VÀ KHUYẾN MÃI ---
+
+    // 1.1. Lấy thông tin chuyến đi để biết giá gốc và companyId
+    const trip = await this.prisma.trips.findUnique({
+      where: { id: tripId },
+      select: {
+        price_default: true,
+        company_route: { select: { company_id: true } }
+      }
+    });
+
+    if (!trip) {
+      throw new NotFoundException('Không tìm thấy chuyến đi.');
+    }
+
+    const companyId = trip.company_route.company_id;
+    const originalPricePerTicket = trip.price_default;
+    const totalOriginalPrice = originalPricePerTicket * seats.length;
+
+    let validatedFinalPrice = totalOriginalPrice;
+    let promotionId: number | null = null;
+
+    // 1.2. Xác thực mã khuyến mãi nếu có
+    if (promotion_code) {
+      try {
+        const promotion = await this.promotionService.validatePromotion(promotion_code, companyId);
+
+        // Tính toán lại giá
+        let discountAmount = 0;
+        if (promotion.discount_type === 'percentage') {
+          discountAmount = (totalOriginalPrice * promotion.discount_value) / 100;
+        } else { // fixed_amount
+          discountAmount = promotion.discount_value;
+        }
+
+        validatedFinalPrice = totalOriginalPrice - discountAmount;
+        if (validatedFinalPrice < 0) validatedFinalPrice = 0;
+
+        promotionId = promotion.id;
+
+      } catch (e) {
+        // Ném lỗi nếu mã không hợp lệ (hết hạn, sai, ...)
+        throw new BadRequestException(`Mã khuyến mãi không hợp lệ: ${e.message}`);
+      }
+    }
+
+    // 1.3. KIỂM TRA AN NINH: So sánh giá đã tính với giá frontend gửi lên
+    if (validatedFinalPrice !== totalPrice) {
+      this.logger.warn(`Price mismatch for trip ${tripId}. Calculated: ${validatedFinalPrice}, Received: ${totalPrice}`);
+      throw new BadRequestException('Giá tiền không khớp. Vui lòng thử lại.');
+    }
+
+    // --- BƯỚC 2: TẠO VÉ TRONG TRANSACTION ---
+
     const result = await this.prisma.$transaction(async (tx) => {
-      // Kiểm tra giữ ghế
+      // 2.1. Kiểm tra giữ ghế
       for (const seatCode of seats) {
         const holdKey = `hold:trip:${tripId}:seat:${seatCode}`;
         const holderId = await this.redis.get(holdKey);
@@ -424,6 +482,8 @@ export class TicketsService {
       }
 
       const createdTickets: any[] = []; // Dùng any để chứa cả payment
+
+      // 2.2. Tạo vé cho từng ghế
       for (const seatCode of seats) {
         const existingTicket = await tx.tickets.findFirst({
           where: { trip_id: tripId, seat_code: seatCode, NOT: { status: 'CANCELLED' } }
@@ -437,11 +497,12 @@ export class TicketsService {
             trip_id: tripId,
             customer_id: customerId,
             seat_code: seatCode,
-            // Cập nhật trạng thái phù hợp hơn, ví dụ: CONFIRMED
-            status: 'CONFIRMED',
+            status: 'CONFIRMED', // Xác nhận ngay vì là thanh toán khi lên xe
             code: await generateUniqueTicketCode(tx),
             booking_time: new Date(),
-            final_amount: totalPrice / seats.length, // Thêm giá tiền cho mỗi vé
+            original_price: originalPricePerTicket,
+            final_amount: validatedFinalPrice / seats.length, // Dùng giá đã xác thực
+            promotion_id: promotionId, // Lưu ID khuyến mãi
             ticket_details: {
               create: {
                 passenger_name: passengerInfo.fullName,
@@ -456,11 +517,10 @@ export class TicketsService {
                 status: 'PENDING',
               },
             },
-            // Tạo luôn payment cho phương thức "Thanh toán khi lên xe"
             payments: {
               create: {
-                method: 'ON_BOARD', // Hoặc 'CASH'
-                amount: totalPrice / seats.length,
+                method: 'ON_BOARD', // Phương thức thanh toán khi lên xe
+                amount: validatedFinalPrice / seats.length, // Dùng giá đã xác thực
                 status: 'PENDING', // Trạng thái chờ thanh toán
                 transaction_id: `ONBOARD_${Date.now()}_${seatCode}`,
               }
@@ -473,12 +533,78 @@ export class TicketsService {
       return { message: 'Đặt vé thành công!', tickets: createdTickets };
     });
 
-    // Các tác vụ phụ sau khi transaction thành công
+    // --- BƯỚC 3: CÁC TÁC VỤ SAU KHI TẠO VÉ ---
+
+    // 3.1. Xóa Redis và emit WebSocket
     for (const ticket of result.tickets) {
       const holdKey = `hold:trip:${tripId}:seat:${ticket.seat_code}`;
       await this.redis.del(holdKey);
       this.ticketsGateway.emitSeatUpdate(tripId, { ...ticket, trip_id: tripId });
     }
+
+    // 3.2. Gửi email xác nhận
+    if (result && result.tickets.length > 0) {
+      this.logger.log(`[ON_BOARD] Attempting to send email for ${result.tickets.length} tickets to ${passengerInfo.email}...`);
+      try {
+        // Lấy ID các vé vừa tạo
+        const ticketIds = result.tickets.map(t => t.id);
+
+        // Truy vấn lại đầy đủ thông tin vé để gửi mail
+        const fullTickets = await this.prisma.tickets.findMany({
+          where: { id: { in: ticketIds } },
+          include: {
+            ticket_details: true,
+            payments: true,
+            trips: {
+              include: {
+                company_route: {
+                  include: {
+                    routes: {
+                      include: {
+                        from_location: true,
+                        to_location: true,
+                      },
+                    },
+                  },
+                }
+              },
+            },
+          },
+        });
+
+        // Format dữ liệu cho email template
+        const formattedTickets = fullTickets.map(ticket => ({
+          ...ticket,
+          formattedPrice: new Intl.NumberFormat('vi-VN').format(ticket.final_amount ?? 0),
+          paymentDateFormatted: moment(ticket.booking_time).tz('Asia/Ho_Chi_Minh').format('HH:mm DD/MM/YYYY'), // Dùng giờ đặt vé
+          departureTimeFormatted: moment(ticket.trips.departure_time).tz('Asia/Ho_Chi_Minh').format('HH:mm'),
+          departureDateFormatted: moment(ticket.trips.departure_time).tz('Asia/Ho_Chi_Minh').format('DD/MM/YYYY'),
+        }));
+
+        const totalAmount = formattedTickets.reduce((sum, t) => sum + (t.final_amount ?? 0), 0);
+
+        // Gửi mail
+        await this.mailerService.sendMail({
+          to: passengerInfo.email,
+          subject: `Xác nhận đặt vé thành công - Mã vé [${formattedTickets.map(t => t.code).join(', ')}]`,
+          template: './booking-confirmation', // Sử dụng template email chung
+          context: {
+            tickets: formattedTickets,
+            passenger: formattedTickets[0].ticket_details,
+            order: {
+              code: formattedTickets[0].code, // Dùng mã vé đầu tiên làm mã đơn hàng
+              total_amount: new Intl.NumberFormat('vi-VN').format(totalAmount),
+            }
+          },
+        });
+        this.logger.log(`✅ [ON_BOARD] Email sent successfully to ${passengerInfo.email}.`);
+
+      } catch (emailError) {
+        // Nếu gửi mail lỗi thì chỉ log, không báo lỗi cho người dùng
+        this.logger.error(`❌ [ON_BOARD] FAILED TO SEND EMAIL to ${passengerInfo.email}:`, emailError);
+      }
+    }
+
     return result;
   }
 

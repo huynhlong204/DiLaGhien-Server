@@ -57,6 +57,7 @@ model transport_companies {
   vehicles              vehicles[]
   seat_layout_templates seat_layout_templates[] @relation("TransportCompanyToSeatLayoutTemplate")
   company_routes        company_routes[]
+  promotions promotions[]
 
   @@index([tax_code])
   @@map("transport_companies")
@@ -309,6 +310,7 @@ model tickets {
   booking_time     DateTime           @default(now()) @db.Timestamptz(6)
   status           String
   note             String?
+  original_price Float?
   final_amount Float?
   payments         payments[]
   shuttle_requests shuttle_requests[]
@@ -316,7 +318,12 @@ model tickets {
   trips            trips              @relation(fields: [trip_id], references: [id], onDelete: Cascade)
   ticket_details   ticket_details?
 
+  promotion_id             Int?    // ID của khuyến mãi đã áp dụng
+  applied_discount_amount  Float?  // Số tiền cụ thể đã được giảm giá
+  promotion                promotions? @relation("TicketPromotion", fields: [promotion_id], references: [id], onDelete: SetNull) // onDelete: SetNull -> Xóa KM không ảnh hưởng vé cũ
+
   @@unique([trip_id, seat_code])
+  @@index([promotion_id])
   @@map("tickets")
 }
 
@@ -409,18 +416,24 @@ model special_dates {
 }
 
 model promotions {
-  id               Int      @id @default(autoincrement())
-  code             String   @unique
-  description      String
-  discount_type    String   // 'percentage' hoặc 'fixed_amount'
-  discount_value   Float
-  valid_from       DateTime
-  valid_to         DateTime
-  is_active        Boolean  @default(true)
-  usage_limit      Int?
+  id             Int      @id @default(autoincrement())
+  code           String   @unique // Mã khuyến mãi (ví dụ: TET2026)
+  description    String   // Mô tả (ví dụ: "Giảm 10% mừng Tết")
+  image_url      String?  // URL ảnh banner/icon
+  discount_type  String   // 'percentage' hoặc 'fixed_amount'
+  discount_value Float    // Giá trị giảm (ví dụ: 10 cho 10%, 50000 cho 50k VNĐ)
+  valid_from     DateTime // Ngày/giờ bắt đầu hiệu lực
+  valid_to       DateTime // Ngày/giờ kết thúc hiệu lực
+  is_active      Boolean  @default(true) // Trạng thái kích hoạt (admin/nhà xe có thể bật/tắt)
+  usage_limit    Int?     // Giới hạn tổng số lượt sử dụng (null = không giới hạn)
   
-  // Có thể thêm các quan hệ phức tạp hơn sau này 
-  // Ví dụ: áp dụng cho tuyến nào, nhà xe nào...
+  // --- LIÊN KẾT NHÀ XE ---
+  company_id     Int?     // Nullable: Nếu null = Global (Admin tạo), != null = Của nhà xe đó
+  company        transport_companies? @relation(fields: [company_id], references: [id], onDelete: Cascade)
 
+  // --- QUAN HỆ NGƯỢC LẠI ---
+  applied_tickets tickets[] @relation("TicketPromotion") // Các vé đã áp dụng mã này
+
+  @@index([company_id])
   @@map("promotions")
 }
