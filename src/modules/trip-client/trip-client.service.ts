@@ -1,10 +1,11 @@
 // @/src/trip-client/trip-client.service.ts
 
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { Prisma } from '@prisma/client';
-import { startOfDay, endOfDay } from 'date-fns';
+import { startOfDay, endOfDay, addMinutes } from 'date-fns';
 import { IsOptional, IsString, IsDateString } from 'class-validator';
+import { ReviewService } from '../review/review.service';
 
 export class FindTripsQueryDto {
   @IsOptional()
@@ -22,65 +23,99 @@ export class FindTripsQueryDto {
 
 @Injectable()
 export class TripClientService {
-  constructor(private prisma: PrismaService) { }
+  private readonly logger = new Logger(TripClientService.name);
+  constructor(
+    private prisma: PrismaService,
+    private reviewService: ReviewService,
+  ) { }
+
+  /**
+   * @description Hàm nội bộ để chuyển "X giờ Y phút" thành số phút
+   */
+  private parseDurationToMinutes(durationStr: string): number {
+    if (!durationStr) return 0;
+    let totalMinutes = 0;
+    const hoursMatch = durationStr.match(/(\d+)\s*giờ/);
+    const minutesMatch = durationStr.match(/(\d+)\s*phút/);
+    if (hoursMatch && hoursMatch[1]) {
+      totalMinutes += parseInt(hoursMatch[1], 10) * 60;
+    }
+    if (minutesMatch && minutesMatch[1]) {
+      totalMinutes += parseInt(minutesMatch[1], 10);
+    }
+    return totalMinutes;
+  }
 
   async findAll(query: FindTripsQueryDto) {
     const { from, to, date } = query;
 
-    // Nếu thiếu thông tin cơ bản, trả về mảng rỗng để tránh tải toàn bộ CSDL
     if (!from || !to || !date) {
       return [];
     }
 
     // --- BƯỚC 1: TRUY VẤN RỘNG ---
-    // Tìm tất cả các chuyến trong ngày mà tuyến đường có chứa cả điểm 'from' và 'to'
     const potentialTrips = await this.prisma.trips.findMany({
       where: {
-        // Lọc theo ngày khởi hành
         departure_time: {
           gte: startOfDay(new Date(date)),
           lt: endOfDay(new Date(date)),
         },
-        // Lọc các tuyến đường PHẢI chứa cả hai địa điểm
         AND: [
-          { // Điều kiện cho điểm đi (from)
+          {
             company_route: {
               OR: [
-                { routes: { from_location: { name: from } } }, // Là điểm đầu của tuyến
-                { stops: { some: { location: { name: from } } } }, // Hoặc là điểm dừng
+                { routes: { from_location: { name: from } } },
+                { stops: { some: { location: { name: from } } } },
               ],
             },
           },
-          { // Điều kiện cho điểm đến (to)
+          {
             company_route: {
               OR: [
-                { routes: { to_location: { name: to } } }, // Là điểm cuối của tuyến
-                { stops: { some: { location: { name: to } } } }, // Hoặc là điểm dừng
+                { routes: { to_location: { name: to } } },
+                { stops: { some: { location: { name: to } } } },
               ],
             },
           },
         ],
       },
       include: {
-        // Include tất cả các quan hệ cần thiết để lọc và hiển thị
         company_route: {
           include: {
             transport_companies: true,
-            // Lấy tất cả điểm dừng và sắp xếp theo đúng thứ tự
             stops: {
               include: { location: true },
               orderBy: { stop_order: 'asc' },
             },
             routes: {
-              include: {
+              select: {
+                id: true,
                 from_location: true,
                 to_location: true,
+                estimated_time: true,
               },
             },
           },
         },
-        vehicles: { include: { vehicle_type: true, seat_layout_template: true } },
-        tickets: { where: { status: 'confirmed' } },
+        vehicles: {
+          select: { id: true }, // Giữ lại nếu cần check xe gán
+        },
+        // SỬA ĐỔI QUAN TRỌNG: Lấy tất cả vé không bị hủy
+        tickets: {
+          where: {
+            status: { not: 'CANCELLED' }, // <-- ĐÃ SỬA Ở ĐÂY
+          },
+        },
+        vehicle_type: {
+          select: {
+            name: true,
+          },
+        },
+        seat_layout_templates: {
+          select: {
+            seat_count: true,
+          },
+        },
       },
       orderBy: {
         departure_time: 'asc',
@@ -88,32 +123,88 @@ export class TripClientService {
     });
 
     // --- BƯỚC 2: LỌC LẠI THEO ĐÚNG THỨ TỰ ---
-    const finalTrips = potentialTrips.filter(trip => {
+    const finalTrips = potentialTrips.filter((trip) => {
       if (!trip.company_route?.routes) return false;
-
-      // Xây dựng một mảng chứa toàn bộ các địa điểm của tuyến theo đúng thứ tự
       const orderedLocations: { name: string }[] = [];
-
-      // 1. Thêm điểm khởi hành chính của tuyến
       orderedLocations.push(trip.company_route.routes.from_location);
-
-      // 2. Thêm các điểm dừng trung gian
-      trip.company_route.stops.forEach(stop => {
+      trip.company_route.stops.forEach((stop) => {
         if (stop.location) orderedLocations.push(stop.location);
       });
-
-      // 3. Thêm điểm kết thúc chính của tuyến
       orderedLocations.push(trip.company_route.routes.to_location);
-
-      // Tìm vị trí của điểm đi và điểm đến mà người dùng tìm kiếm
-      const fromIndex = orderedLocations.findIndex(loc => loc.name === from);
-      const toIndex = orderedLocations.findIndex(loc => loc.name === to);
-
-      // Chuyến đi hợp lệ khi cả hai điểm đều tồn tại và điểm đi phải có thứ tự trước điểm đến
+      const fromIndex = orderedLocations.findIndex((loc) => loc.name === from);
+      const toIndex = orderedLocations.findIndex((loc) => loc.name === to);
       return fromIndex !== -1 && toIndex !== -1 && fromIndex < toIndex;
     });
 
-    return finalTrips;
+    if (finalTrips.length === 0) {
+      return [];
+    }
+
+    // --- BƯỚC 3: LẤY DỮ LIỆU REVIEW ---
+    const companyIds = [
+      ...new Set(
+        finalTrips.map((trip) => trip.company_route.transport_companies.id),
+      ),
+    ];
+    const reviewSummariesPromises = companyIds.map((id) =>
+      this.reviewService.getReviewSummaryByCompany(id),
+    );
+    const reviewSummaries = await Promise.all(reviewSummariesPromises);
+    const summaryMap = new Map(
+      reviewSummaries.map((summary) => [summary.companyId, summary]),
+    );
+
+    // --- BƯỚC 4: ĐỊNH DẠNG DỮ LIỆU TRẢ VỀ CHO FRONTEND ---
+    const formattedTrips = finalTrips.map((trip) => {
+      const company = trip.company_route.transport_companies;
+      const route = trip.company_route.routes;
+      const vehicleType = trip.vehicle_type;
+      const summary = summaryMap.get(company.id);
+
+      const durationMinutes = this.parseDurationToMinutes(route.estimated_time);
+      let arrivalTime = trip.departure_time.toISOString();
+      if (durationMinutes > 0) {
+        arrivalTime = addMinutes(
+          trip.departure_time,
+          durationMinutes,
+        ).toISOString();
+      } else {
+        this.logger.warn(
+          `Could not parse duration for route ${route.id}: "${route.estimated_time}"`,
+        );
+      }
+
+      const totalSeats = trip.seat_layout_templates?.seat_count || 0;
+      // bookedSeats bây giờ sẽ đếm đúng số vé không bị hủy
+      const bookedSeats = trip.tickets.length;
+      const seatsAvailable =
+        totalSeats - bookedSeats > 0 ? totalSeats - bookedSeats : 0;
+
+      // Log để kiểm tra lại
+      this.logger.debug(
+        `Trip ID: ${trip.id}, Total Seats: ${totalSeats}, Booked (Not Cancelled): ${bookedSeats}, Available: ${seatsAvailable}`,
+      );
+
+      return {
+        id: trip.id.toString(),
+        price: trip.price_default,
+        departureTime: trip.departure_time.toISOString(),
+        arrivalTime: arrivalTime,
+        durationMinutes: durationMinutes,
+        fromLocation: { name: from },
+        toLocation: { name: to },
+        companyName: company.name,
+        companyLogoUrl: company.avatar_url,
+        companyId: company.id,
+        busType: vehicleType ? vehicleType.name : 'Chưa rõ',
+        amenities: [],
+        companyAverageRating: summary ? summary.averageRating : null,
+        companyTotalReviews: summary ? summary.totalReviews : 0,
+        seatsAvailable: seatsAvailable, // Trả về số ghế đã tính
+      };
+    });
+
+    return formattedTrips;
   }
 
   /**
@@ -126,10 +217,10 @@ export class TripClientService {
         id: true,
         departure_time: true,
         price_default: true,
+        company_route_id: true,
         company_route: {
           include: {
             transport_companies: true,
-            // Lấy tất cả điểm dừng và sắp xếp theo đúng thứ tự
             stops: {
               include: { location: true },
               orderBy: { stop_order: 'asc' },
@@ -142,11 +233,15 @@ export class TripClientService {
             },
           },
         },
-        seat_layout_templates: true,
+        seat_layout_templates: true, // Lấy layout
         status: true,
         tickets: {
-          where: { status: { not: 'CANCELLED' } },
+          where: { status: { not: 'CANCELLED' } }, // Lấy vé không bị hủy
           include: { ticket_details: true },
+        },
+        vehicle_type: {
+          // Lấy tên loại xe
+          select: { name: true },
         },
       },
     });
@@ -154,7 +249,7 @@ export class TripClientService {
     if (!tripWithTickets) {
       throw new NotFoundException(`Không tìm thấy chuyến đi với ID ${tripId}.`);
     }
+    // Cân nhắc định dạng dữ liệu trả về ở đây nếu cần cho trang chi tiết
     return tripWithTickets;
   }
-
 }

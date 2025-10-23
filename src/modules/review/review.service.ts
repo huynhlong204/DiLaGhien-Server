@@ -7,11 +7,16 @@ import {
 } from '@nestjs/common';
 import { CreateReviewDto } from './dto/create-review.dto';
 import { PrismaService } from 'src/prisma/prisma.service';
-import { UpdateReviewDto } from './dto/update-review.dto'; // Import DTO mới
+import { UpdateReviewDto } from './dto/update-review.dto';
+import { tr } from 'date-fns/locale';
 
 @Injectable()
 export class ReviewService {
     constructor(private prisma: PrismaService) { }
+
+    /**
+     * @description Tạo mới một review
+     */
     async create(
         tripId: number,
         customerId: number,
@@ -27,29 +32,22 @@ export class ReviewService {
             throw new NotFoundException(`Trip with ID ${tripId} not found`);
         }
 
-        // 2. [QUAN TRỌNG] Xác thực khách hàng có vé cho chuyến đi này
+        // 2. Xác thực khách hàng có vé cho chuyến đi này
         const ticket = await this.prisma.tickets.findFirst({
             where: {
                 trip_id: tripId,
                 customer_id: customerId,
-                // Bạn có thể thêm điều kiện status của vé nếu cần, ví dụ: 'COMPLETED'
+                // Cân nhắc thêm: status: 'COMPLETED' (nếu có)
             },
         });
         if (!ticket) {
             throw new ForbiddenException('You are not authorized to review this trip.');
         }
 
-        // 3. Kiểm tra xem chuyến đi đã hoàn thành chưa
-        // Bỏ qua điều kiện này, vì frontend đã check 'isUpcoming'
-        // if (new Date(trip.departure_time) > new Date()) {
-        //   throw new ForbiddenException('You can only review trips that have been completed.');
-        // }
-
-        // 4. Kiểm tra xem khách hàng đã đánh giá chuyến này chưa
+        // 3. Kiểm tra xem khách hàng đã đánh giá chuyến này chưa
         const existingReview = await this.prisma.reviews.findUnique({
             where: {
                 trip_id_customer_id: {
-                    // Prisma tự động tạo tên này từ @@unique
                     trip_id: tripId,
                     customer_id: customerId,
                 },
@@ -59,7 +57,7 @@ export class ReviewService {
             throw new ConflictException('You have already reviewed this trip.');
         }
 
-        // 5. Tạo review mới
+        // 4. Tạo review mới
         return this.prisma.reviews.create({
             data: {
                 rating,
@@ -70,7 +68,9 @@ export class ReviewService {
         });
     }
 
-    // MỚI: Logic cập nhật
+    /**
+     * @description Cập nhật một review
+     */
     async update(
         reviewId: number,
         customerId: number,
@@ -96,7 +96,9 @@ export class ReviewService {
         });
     }
 
-    // MỚI: Logic tìm review của tôi cho 1 chuyến đi
+    /**
+     * @description Tìm review của 1 user cho 1 chuyến đi cụ thể
+     */
     async findMyReviewForTrip(tripId: number, customerId: number) {
         // Sẽ trả về review hoặc null
         return this.prisma.reviews.findUnique({
@@ -106,10 +108,16 @@ export class ReviewService {
                     customer_id: customerId,
                 },
             },
+            include: {
+                // Có thể include thêm thông tin chuyến đi nếu cần
+                // trip: true 
+            }
         });
     }
 
-    // MỚI: Logic tìm 1 review bằng ID
+    /**
+     * @description Tìm 1 review bằng ID
+     */
     async findOne(reviewId: number) {
         const review = await this.prisma.reviews.findUnique({
             where: { id: reviewId },
@@ -118,5 +126,126 @@ export class ReviewService {
             throw new NotFoundException('Review not found');
         }
         return review;
+    }
+
+    /**
+       * @description Lấy danh sách review theo nhà xe (có phân trang)
+       * @notes ĐÃ SỬA LỖI THEO ĐÚNG SCHEMA
+       */
+    async findAllByCompany(
+        companyId: number,
+        options: { page: number; limit: number },
+    ) {
+        const { page, limit } = options;
+        const skip = (page - 1) * limit;
+
+        const [reviews, total] = await this.prisma.$transaction([
+            this.prisma.reviews.findMany({
+                where: {
+                    // SỬA LẠI: Lọc qua quan hệ lồng nhau
+                    trip: { // Từ Review -> Trip
+                        company_route: { // Từ Trip -> CompanyRoute
+                            company_id: companyId, // Từ CompanyRoute -> Company ID
+                        },
+                    },
+                },
+                include: {
+                    // Lấy thông tin customer và profile lồng nhau
+                    customer: {
+                        select: {
+                            customer_id: true,
+                            customer_profiles: {
+                                select: {
+                                    name: true,
+                                    avatar_url: true,
+                                },
+                            },
+                        },
+                    },
+                },
+                orderBy: {
+                    created_at: 'desc',
+                },
+                skip: skip,
+                take: limit,
+            }),
+            this.prisma.reviews.count({
+                where: {
+                    // SỬA LẠI: Lọc qua quan hệ lồng nhau
+                    trip: {
+                        company_route: {
+                            company_id: companyId,
+                        },
+                    },
+                },
+            }),
+        ]);
+
+        // Map lại dữ liệu customer để làm phẳng
+        const formattedReviews = reviews.map(review => ({
+            ...review,
+            customer: {
+                customer_id: review.customer.customer_id,
+                // Gộp customer_profiles vào cấp customer cho đơn giản
+                customer_profiles: review.customer.customer_profiles ? {
+                    name: review.customer.customer_profiles.name,
+                    avatar_url: review.customer.customer_profiles.avatar_url,
+                } : null
+            }
+        }));
+
+        return {
+            data: formattedReviews,
+            meta: {
+                total,
+                page,
+                limit,
+                totalPages: Math.ceil(total / limit),
+            },
+        };
+    }
+
+    /**
+     * @description Lấy thống kê (tổng, trung bình) review theo nhà xe
+     * @notes ĐÃ SỬA LỖI THEO ĐÚNG SCHEMA
+     */
+    async getReviewSummaryByCompany(companyId: number) {
+        // 1. Kiểm tra nhà xe
+        const company = await this.prisma.transport_companies.findUnique({
+            where: { id: companyId },
+            select: { id: true, name: true },
+        });
+        if (!company) {
+            throw new NotFoundException(
+                `Transport company with ID ${companyId} not found`,
+            );
+        }
+
+        // 2. Dùng aggregate
+        const stats = await this.prisma.reviews.aggregate({
+            where: {
+                // SỬA LẠI: Lọc qua quan hệ lồng nhau
+                trip: { // Từ Review -> Trip
+                    company_route: { // Từ Trip -> CompanyRoute
+                        company_id: companyId, // Từ CompanyRoute -> Company ID
+                    },
+                },
+            },
+            _avg: {
+                rating: true,
+            },
+            _count: {
+                id: true,
+            },
+        });
+
+        return {
+            companyId: company.id,
+            companyName: company.name,
+            totalReviews: stats._count.id || 0,
+            averageRating: stats._avg.rating
+                ? Number(stats._avg.rating.toFixed(1))
+                : null,
+        };
     }
 }
