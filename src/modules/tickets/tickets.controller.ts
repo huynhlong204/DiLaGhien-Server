@@ -1,4 +1,17 @@
-import { Controller, Get, Post, Body, Param, ParseIntPipe, UseGuards, Put, Request, Query, Res } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Param,
+  ParseIntPipe,
+  UseGuards,
+  Put,
+  Request,
+  Query,
+  Res,
+  BadRequestException,
+} from '@nestjs/common';
 import { TicketsService } from './tickets.service';
 import { Response } from 'express';
 import { CreateTicketDto } from './dto/create-ticket.dto';
@@ -11,9 +24,8 @@ import { CreatePublicBookingDto } from './dto/create-public-booking.dto';
 import { OptionalJwtAuthGuard } from '../auth-user/guards/optional-jwt-auth.guard';
 
 @Controller('tickets')
-
 export class TicketsController {
-  constructor(private readonly ticketsService: TicketsService) { }
+  constructor(private readonly ticketsService: TicketsService) {}
 
   @Get(':id')
   @UseGuards(JwtAuthGuard, RolesGuard)
@@ -22,11 +34,13 @@ export class TicketsController {
     return this.ticketsService.findOne(id);
   }
 
-
   @Put(':id')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN, UserRole.OWNER)
-  update(@Param('id', ParseIntPipe) id: number, @Body() updateTicketDto: UpdateTicketDto) {
+  update(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() updateTicketDto: UpdateTicketDto,
+  ) {
     return this.ticketsService.update(id, updateTicketDto);
   }
 
@@ -62,10 +76,13 @@ export class TicketsController {
     const user = req.user;
 
     // Truyền cả DTO và thông tin user (nếu có) xuống service
-    return this.ticketsService.createPublicBooking(createPublicBookingDto, user);
+    return this.ticketsService.createPublicBooking(
+      createPublicBookingDto,
+      user,
+    );
   }
 
-  // Lấy lịch sử đặt vé của một công ty 
+  // Lấy lịch sử đặt vé của một công ty
   @Get('/history/company/:companyId')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN, UserRole.OWNER)
@@ -76,7 +93,11 @@ export class TicketsController {
     @Query('limit', new ParseIntPipe({ optional: true })) limit: number = 10,
     @Query('search') search?: string,
   ) {
-    return this.ticketsService.getTicketsByCompany(companyId, { page, limit }, search);
+    return this.ticketsService.getTicketsByCompany(
+      companyId,
+      { page, limit },
+      search,
+    );
   }
 
   /**
@@ -90,13 +111,21 @@ export class TicketsController {
     @Query('search') search: string | undefined,
     @Res() res: Response,
   ) {
-    const { fileBuffer, companyName } = await this.ticketsService.exportTicketsByCompany(companyId, search);
+    const { fileBuffer, companyName } =
+      await this.ticketsService.exportTicketsByCompany(companyId, search);
 
-    const sanitizedCompanyName = companyName.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, '-').toLowerCase();
+    const sanitizedCompanyName = companyName
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/\s+/g, '-')
+      .toLowerCase();
 
     const fileName = `lich-su-dat-ve-${sanitizedCompanyName}-${new Date().toISOString().split('T')[0]}.xlsx`;
 
-    res.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.header(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
     res.header('Content-Disposition', `attachment; filename="${fileName}"`);
     res.send(fileBuffer);
   }
@@ -111,11 +140,29 @@ export class TicketsController {
     @Param('tripId', ParseIntPipe) tripId: number,
     @Res() res: Response,
   ) {
-    const { fileBuffer, fileName } = await this.ticketsService.exportTicketsByTrip(tripId);
+    const { fileBuffer, fileName } =
+      await this.ticketsService.exportTicketsByTrip(tripId);
 
-    res.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.header(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
     res.header('Content-Disposition', `attachment; filename="${fileName}"`);
 
     res.send(fileBuffer);
+  }
+
+  @Get('/public/order-details')
+  getBookingDetailsByIdentifier(
+    @Query('order_code') orderCode?: string, // Cho luồng 'lenxe'
+    @Query('order_id') orderId?: string, // Cho luồng 'VNPAY' (vnp_TxnRef)
+  ) {
+    if (orderId) {
+      return this.ticketsService.getBookingDetailsByVnpTxnRef(orderId);
+    }
+    if (orderCode) {
+      return this.ticketsService.getBookingDetailsByOrderCode(orderCode);
+    }
+    throw new BadRequestException('Missing order identifier');
   }
 }
