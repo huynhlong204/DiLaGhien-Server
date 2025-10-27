@@ -247,6 +247,7 @@ model locations {
   commune                  String?
   locationType             String?  
   map_url                  String?
+  image_url String?
   routesFrom               routes[]           @relation("RouteFrom")
   routesTo                 routes[]           @relation("RouteTo")
   shuttle_requests_pickup  shuttle_requests[] @relation("shuttle_requests_pickup")

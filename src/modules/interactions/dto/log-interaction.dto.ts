@@ -1,7 +1,18 @@
 // src/interactions/dto/log-interaction.dto.ts
-import { IsNotEmpty, IsString, IsObject, IsJSON } from 'class-validator';
+import {
+  IsNotEmpty,
+  IsString,
+  IsObject,
+  IsJSON,
+  IsInt,
+  IsOptional,
+} from 'class-validator';
 
 export class LogInteractionDto {
+  @IsOptional()
+  @IsInt({ message: 'customer_id phải là một số nguyên' })
+  customer_id: number | null;
+
   @IsNotEmpty()
   @IsString()
   session_id: string;
