@@ -6,24 +6,21 @@ import { Prisma } from '@prisma/client';
 
 @Injectable()
 export class PermissionService {
-  constructor(private prisma: PrismaService) { }
-
-  // src/permissions/permissions.service.ts
+  constructor(private prisma: PrismaService) {}
 
   async create(createPermissionDto: CreatePermissionDto) {
-    // Tách moduleId ra khỏi các dữ liệu còn lại của permission
     const { module_id, ...permissionData } = createPermissionDto;
 
-    // Bạn có thể thêm bước kiểm tra xem moduleId có tồn tại trong DB không nếu cần
     const moduleExists = await this.prisma.modules.findUnique({
       where: { module_id: module_id },
     });
 
     if (!moduleExists) {
-      throw new BadRequestException(`Module với ID "${module_id}" không tồn tại.`);
+      throw new BadRequestException(
+        `Module với ID "${module_id}" không tồn tại.`,
+      );
     }
 
-    // Kiểm tra xem bit_value đã được sử dụng trong module này chưa (tùy chọn)
     if (permissionData.bit_value) {
       const existingPermission = await this.prisma.permissions.findFirst({
         where: {
@@ -34,24 +31,26 @@ export class PermissionService {
 
       if (existingPermission) {
         throw new BadRequestException(
-          `Bit value ${permissionData.bit_value} đã tồn tại trong module này.`
+          `Bit value ${permissionData.bit_value} đã tồn tại trong module này.`,
         );
       }
     }
 
-    // Tạo permission và kết nối với module thông qua ID
     return this.prisma.permissions.create({
       data: {
-        ...permissionData, // Dữ liệu của permission (name, bit_value, description)
-        modules: {         // Quan hệ tên là 'module' (số ít)
+        ...permissionData,
+        modules: {
           connect: {
-            module_id: module_id, // Kết nối với module có id này
+            module_id: module_id,
           },
         },
       },
     });
   }
 
+  // ==================================================
+  // PHẦN ĐƯỢC TỐI ƯU HÓA
+  // ==================================================
   async findAll() {
     const permissions = await this.prisma.permissions.findMany({
       select: {
@@ -60,22 +59,30 @@ export class PermissionService {
         bit_value: true,
         description: true,
         module_id: true,
-        modules: true
+        modules: true, // Lấy luôn object module liên quan
       },
     });
 
-    // Lấy count modules cho từng permission
-    const permissionsWithModuleCount = await Promise.all(
-      permissions.map(async (permission) => {
-        const moduleCount = await this.prisma.modules.count({
-          where: { permissions: { some: { permission_id: permission.permission_id } } },
-        });
-        return { ...permission, _count: moduleCount };
-      })
-    );
+    // Xóa bỏ hoàn toàn Promise.all (nguyên nhân gây lỗi N+1)
+    // Chúng ta dùng .map() đồng bộ (synchronous) vì đã có tất cả dữ liệu
+    const permissionsWithModuleCount = permissions.map((permission) => {
+      // Vì 1 permission chỉ có 1 module,
+      // nên "count" chính là 1 nếu module tồn tại (không null), và 0 nếu là null
+      const moduleCount = permission.modules ? 1 : 0;
+
+      // Bạn có thể chọn xóa object 'modules' đi cho gọn
+      // const { modules, ...rest } = permission;
+      // return { ...rest, _count: moduleCount };
+
+      // Hoặc giữ nguyên (như code gốc)
+      return { ...permission, _count: moduleCount };
+    });
 
     return permissionsWithModuleCount;
   }
+  // ==================================================
+  // KẾT THÚC PHẦN TỐI ƯU HÓA
+  // ==================================================
 
   async findOne(id: number) {
     const permission = await this.prisma.permissions.findUnique({
@@ -111,10 +118,19 @@ export class PermissionService {
     if (!permission) {
       throw new BadRequestException('Permission không tồn tại.');
     }
-    // Ensure modules is always an array
-    const modules = Array.isArray(permission.modules) ? permission.modules : (permission.modules ? [permission.modules] : []);
+
+    // Code gốc của bạn (dòng dưới) để check 'modules' là đúng
+    // Nó xử lý trường hợp 'modules' là object (1-N) hoặc null
+    const modules = Array.isArray(permission.modules)
+      ? permission.modules
+      : permission.modules
+        ? [permission.modules]
+        : [];
+
     if (modules.length > 0) {
-      throw new BadRequestException('Không thể xóa permission đang được sử dụng.');
+      throw new BadRequestException(
+        'Không thể xóa permission đang được sử dụng.',
+      );
     }
     return this.prisma.permissions.delete({
       where: { permission_id: id },
