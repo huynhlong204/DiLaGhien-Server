@@ -9,12 +9,7 @@ export class InteractionsController {
   constructor(private readonly interactionsService: InteractionsService) {}
 
   @Post()
-  async logInteraction(
-    @Body() dto: LogInteractionDto,
-    @Req() req: Request,
-  ) {
-    const customerId = (req.user as any)?.id || null;
-
-    return this.interactionsService.logInteraction(dto, customerId);
+  async logInteraction(@Body() dto: LogInteractionDto) {
+    return this.interactionsService.logInteraction(dto);
   }
 }
