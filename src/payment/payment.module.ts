@@ -7,12 +7,8 @@ import { TicketsModule } from 'src/modules/tickets/tickets.module';
 import { PromotionModule } from 'src/modules/promotion/promotion.module';
 
 @Module({
-  imports: [
-    ConfigModule,
-    forwardRef(() => TicketsModule),
-    PromotionModule
-  ],
+  imports: [ConfigModule, forwardRef(() => TicketsModule), PromotionModule],
   controllers: [PaymentController],
-  providers: [PaymentService, PrismaService],
+  providers: [PaymentService],
 })
-export class PaymentModule { }
+export class PaymentModule {}

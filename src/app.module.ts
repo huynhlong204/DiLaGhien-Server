@@ -33,6 +33,7 @@ import { PaymentModule } from './payment/payment.module';
 import { ReviewModule } from './modules/review/review.module';
 import { PromotionModule } from './modules/promotion/promotion.module';
 import { InteractionsModule } from './modules/interactions/interactions.module';
+import { PrismaService } from './prisma/prisma.service';
 
 @Module({
   imports: [
@@ -118,6 +119,7 @@ import { InteractionsModule } from './modules/interactions/interactions.module';
     InteractionsModule,
   ],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [AppService, PrismaService],
+  exports: [PrismaService],
 })
-export class AppModule { }
+export class AppModule {}

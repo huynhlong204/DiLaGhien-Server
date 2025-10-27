@@ -8,16 +8,10 @@ import { ConfigModule } from '@nestjs/config';
 import { LocalStrategy } from './strategies/local.strategy';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { GoogleStrategy } from './strategies/google.strategy';
-import { PrismaModule } from 'src/prisma/prisma.module';
 import { RefreshJwtStrategy } from './strategies/refresh-jwt.strategy';
 
 @Module({
-  imports: [
-    PrismaModule,
-    PassportModule,
-    ConfigModule,
-    JwtModule.register({}),
-  ],
+  imports: [PassportModule, ConfigModule, JwtModule.register({})],
   controllers: [AuthUserController],
   providers: [
     AuthUserService,
@@ -28,4 +22,4 @@ import { RefreshJwtStrategy } from './strategies/refresh-jwt.strategy';
   ],
   exports: [AuthUserService],
 })
-export class AuthUserModule { }
+export class AuthUserModule {}
