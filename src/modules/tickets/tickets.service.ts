@@ -539,79 +539,85 @@ export class TicketsService {
 
     // --- BƯỚC 2: TẠO VÉ TRONG TRANSACTION ---
 
-    const result = await this.prisma.$transaction(async (tx) => {
-      // 2.1. Kiểm tra giữ ghế
-      for (const seatCode of seats) {
-        const holdKey = `hold:trip:${tripId}:seat:${seatCode}`;
-        const holderId = await this.redis.get(holdKey);
-        if (holderId !== socketId) {
-          throw new ConflictException(
-            `Ghế ${seatCode} đã hết hạn giữ hoặc được người khác chọn.`,
-          );
+    const result = await this.prisma.$transaction(
+      async (tx) => {
+        // 2.1. Kiểm tra giữ ghế
+        for (const seatCode of seats) {
+          const holdKey = `hold:trip:${tripId}:seat:${seatCode}`;
+          const holderId = await this.redis.get(holdKey);
+          if (holderId !== socketId) {
+            throw new ConflictException(
+              `Ghế ${seatCode} đã hết hạn giữ hoặc được người khác chọn.`,
+            );
+          }
         }
-      }
-      const orderId = `ONBOARD_${moment().format('YYYYMMDDHHmmss')}`;
-      const createdTickets: any[] = []; // Dùng any để chứa cả payment
+        const orderId = `ONBOARD_${moment().format('YYYYMMDDHHmmss')}`;
+        const createdTickets: any[] = []; // Dùng any để chứa cả payment
 
-      // 2.2. Tạo vé cho từng ghế
-      for (const seatCode of seats) {
-        const existingTicket = await tx.tickets.findFirst({
-          where: {
-            trip_id: tripId,
-            seat_code: seatCode,
-            NOT: { status: 'CANCELLED' },
-          },
-        });
-        if (existingTicket) {
-          throw new ConflictException(
-            `Ghế ${seatCode} đã được đặt trong lúc bạn thao tác.`,
-          );
+        // 2.2. Tạo vé cho từng ghế
+        for (const seatCode of seats) {
+          const existingTicket = await tx.tickets.findFirst({
+            where: {
+              trip_id: tripId,
+              seat_code: seatCode,
+              NOT: { status: 'CANCELLED' },
+            },
+          });
+          if (existingTicket) {
+            throw new ConflictException(
+              `Ghế ${seatCode} đã được đặt trong lúc bạn thao tác.`,
+            );
+          }
+
+          const newTicket = await tx.tickets.create({
+            data: {
+              trip_id: tripId,
+              customer_id: customerId,
+              seat_code: seatCode,
+              status: 'CONFIRMED', // Xác nhận ngay vì là thanh toán khi lên xe
+              code: await generateUniqueTicketCode(tx),
+              booking_time: new Date(),
+              original_price: originalPricePerTicket,
+              final_amount: validatedFinalPrice / seats.length, // Dùng giá đã xác thực
+              promotion_id: promotionId, // Lưu ID khuyến mãi
+              ticket_details: {
+                create: {
+                  passenger_name: passengerInfo.fullName,
+                  passenger_phone: passengerInfo.phone,
+                  passenger_email: passengerInfo.email,
+                },
+              },
+              shuttle_requests: {
+                create: {
+                  pickup_location_id: pickupId,
+                  dropoff_location_id: dropoffId,
+                  status: 'PENDING',
+                },
+              },
+              payments: {
+                create: {
+                  method: 'ON_BOARD', // Phương thức thanh toán khi lên xe
+                  amount: validatedFinalPrice / seats.length, // Dùng giá đã xác thực
+                  status: 'PENDING', // Trạng thái chờ thanh toán
+                  transaction_id: `${orderId}_${seatCode}`,
+                },
+              },
+            },
+            include: { payments: true }, // Lấy luôn thông tin payment
+          });
+          createdTickets.push(newTicket);
         }
-
-        const newTicket = await tx.tickets.create({
-          data: {
-            trip_id: tripId,
-            customer_id: customerId,
-            seat_code: seatCode,
-            status: 'CONFIRMED', // Xác nhận ngay vì là thanh toán khi lên xe
-            code: await generateUniqueTicketCode(tx),
-            booking_time: new Date(),
-            original_price: originalPricePerTicket,
-            final_amount: validatedFinalPrice / seats.length, // Dùng giá đã xác thực
-            promotion_id: promotionId, // Lưu ID khuyến mãi
-            ticket_details: {
-              create: {
-                passenger_name: passengerInfo.fullName,
-                passenger_phone: passengerInfo.phone,
-                passenger_email: passengerInfo.email,
-              },
-            },
-            shuttle_requests: {
-              create: {
-                pickup_location_id: pickupId,
-                dropoff_location_id: dropoffId,
-                status: 'PENDING',
-              },
-            },
-            payments: {
-              create: {
-                method: 'ON_BOARD', // Phương thức thanh toán khi lên xe
-                amount: validatedFinalPrice / seats.length, // Dùng giá đã xác thực
-                status: 'PENDING', // Trạng thái chờ thanh toán
-                transaction_id: `${orderId}_${seatCode}`,
-              },
-            },
-          },
-          include: { payments: true }, // Lấy luôn thông tin payment
-        });
-        createdTickets.push(newTicket);
-      }
-      return {
-        message: 'Đặt vé thành công!',
-        tickets: createdTickets,
-        orderCode: orderId,
-      };
-    });
+        return {
+          message: 'Đặt vé thành công!',
+          tickets: createdTickets,
+          orderCode: orderId,
+        };
+      },
+      {
+        maxWait: 10000, // Tăng thời gian chờ kết nối (mặc định 2s)
+        timeout: 20000, // Tăng tổng thời gian transaction (mặc định 5s)
+      },
+    );
 
     // --- BƯỚC 3: CÁC TÁC VỤ SAU KHI TẠO VÉ ---
 

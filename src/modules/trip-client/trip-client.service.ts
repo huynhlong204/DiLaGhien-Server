@@ -9,6 +9,10 @@ import { ReviewService } from '../review/review.service'; // Đảm bảo đư�
 import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { firstValueFrom } from 'rxjs';
+import {
+  TripClientResponse,
+  PromotionInfo,
+} from './dto/trip-client-response.interface';
 
 // DTO cho query params
 export class FindTripsQueryDto {
@@ -20,6 +24,16 @@ export class FindTripsQueryDto {
 interface PopularRoute {
   route_id: number;
   // Các trường khác có thể có nhưng không cần thiết ở đây
+}
+
+export class ApplicablePromotion {
+  id: number;
+  code: string;
+  description: string;
+  discount_type: 'fixed_amount' | 'percentage';
+  discount_value: number;
+  company_id: number | null;
+  // Có thể thêm valid_to, valid_from nếu cần
 }
 
 // Hàm tính median (trung vị)
@@ -73,7 +87,7 @@ export class TripClientService {
     return totalMinutes;
   }
 
-  // === HÀM TÌM KIẾM CHUYẾN ĐI (Giữ logic cũ, thêm tính giá tốt) ===
+  // === HÀM TÌM KIẾM CHUYẾN ĐI ĐÃ NÂNG CẤP HOÀN CHỈNH ===
   async findAll(query: FindTripsQueryDto) {
     const { from, to, date } = query;
     if (!from || !to || !date || !isValid(new Date(date))) {
@@ -86,9 +100,13 @@ export class TripClientService {
     const queryDate = new Date(date);
     const startDate = startOfDay(queryDate);
     const endDate = endOfDay(queryDate);
+    const NESTJS_API_URL = this.configService.get<string>(
+      'NESTJS_API_URL',
+      'http://localhost:3001',
+    );
 
     try {
-      // --- BƯỚC 1: TRUY VẤN RỘNG (Giữ nguyên logic cũ) ---
+      // --- BƯỚC 1: TRUY VẤN RỘNG (Giữ nguyên logic cũ của bạn) ---
       const potentialTrips = await this.prisma.trips.findMany({
         where: {
           departure_time: { gte: startDate, lt: endDate },
@@ -104,7 +122,7 @@ export class TripClientService {
                   },
                 ],
               },
-            }, // Thêm is_pickup_point
+            },
             {
               company_route: {
                 OR: [
@@ -116,10 +134,9 @@ export class TripClientService {
                   },
                 ],
               },
-            }, // Thêm is_dropoff_point
+            },
           ],
         },
-        // Giữ nguyên include của bạn
         include: {
           company_route: {
             include: {
@@ -139,7 +156,7 @@ export class TripClientService {
             },
           },
           vehicles: { select: { id: true } },
-          tickets: { where: { status: { not: 'CANCELLED' } } }, // Giữ nguyên
+          tickets: { where: { status: { not: 'CANCELLED' } } },
           vehicle_type: { select: { name: true } },
           seat_layout_templates: { select: { seat_count: true } },
         },
@@ -159,21 +176,16 @@ export class TripClientService {
           (loc) => loc.name === from,
         );
         const toIndex = orderedLocations.findIndex((loc) => loc.name === to);
-        // Đảm bảo điểm đón nằm trước hoặc trùng điểm bắt đầu tuyến và điểm trả nằm sau hoặc trùng điểm kết thúc tuyến
-        // Đồng thời đảm bảo fromIndex < toIndex
         return fromIndex !== -1 && toIndex !== -1 && fromIndex < toIndex;
       });
 
-      if (finalTrips.length === 0) {
-        this.logger.log(
-          `No valid trips found after filtering for route: ${from} -> ${to} on ${date}`,
-        );
-        return [];
-      }
+      if (finalTrips.length === 0) return [];
 
-      // --- BƯỚC 2.5 (MỚI): TÍNH GIÁ TRUNG VỊ ---
-      // Lấy tất cả giá của các chuyến đi CÙNG TUYẾN CHÍNH (không xét stops) trong ngày
-      // Điều này đơn giản hơn và thường đủ chính xác
+      // Lấy ID route chính và ID nhà xe đầu tiên (đại diện cho tuyến này)
+      const representativeCompanyId =
+        finalTrips[0].company_route.transport_companies.id;
+
+      // --- BƯỚC 2.5: TÍNH GIÁ TRUNG VỊ (Cho nhãn is_good_price) ---
       const allPricesOnRoute = await this.prisma.trips.findMany({
         where: {
           departure_time: { gte: startDate, lt: endDate },
@@ -181,7 +193,7 @@ export class TripClientService {
             routes: {
               from_location: {
                 name: finalTrips[0].company_route.routes.from_location.name,
-              }, // Lấy tên route chính từ kết quả
+              },
               to_location: {
                 name: finalTrips[0].company_route.routes.to_location.name,
               },
@@ -190,19 +202,14 @@ export class TripClientService {
         },
         select: { price_default: true },
       });
-
       const prices = allPricesOnRoute
         .map((t) => t.price_default)
         .filter((p) => p != null) as number[];
       const medianPrice = calculateMedian(prices);
       const goodPriceThreshold =
-        medianPrice && medianPrice > 0 ? medianPrice * 0.85 : null; // Ngưỡng 15%
+        medianPrice && medianPrice > 0 ? medianPrice * 0.85 : null;
 
-      this.logger.debug(
-        `Route: ${from} -> ${to} | Date: ${date} | Median Price: ${medianPrice} | Good Price Threshold: ${goodPriceThreshold}`,
-      );
-
-      // --- BƯỚC 3: LẤY DỮ LIỆU REVIEW (Giữ nguyên) ---
+      // --- BƯỚC 3: LẤY DỮ LIỆU REVIEW & COMPANY IDs ---
       const companyIds = [
         ...new Set(
           finalTrips.map((trip) => trip.company_route.transport_companies.id),
@@ -210,43 +217,97 @@ export class TripClientService {
       ];
       const reviewSummaries = await Promise.all(
         companyIds.map((id) =>
-          this.reviewService.getReviewSummaryByCompany(id).catch((err) => {
-            this.logger.error(
-              `Failed to get review summary for company ${id}: ${err.message}`,
-            );
-            return { companyId: id, averageRating: null, totalReviews: 0 }; // Fallback
-          }),
+          this.reviewService.getReviewSummaryByCompany(id).catch((err) => ({
+            companyId: id,
+            averageRating: null,
+            totalReviews: 0,
+          })),
         ),
       );
+
       const summaryMap = new Map(
         reviewSummaries.map((summary) => [summary.companyId, summary]),
       );
+      this.logger.debug(
+        `Calling internal Promotions API at ${NESTJS_API_URL}/promotion/applicable for companyId=${representativeCompanyId}`,
+      );
 
-      let popularRouteIds = new Set<number>(); // Dùng Set để tra cứu nhanh
+      // ----------------------------------------------------------------------
+      // --- BƯỚC 3.5: LẤY TẤT CẢ KHUYẾN MÃI ÁP DỤNG ---
+      // ----------------------------------------------------------------------
+      // --- BƯỚC 3.5: LẤY TẤT CẢ KHUYẾN MÃI ÁP DỤNG CHO TẤT CẢ CÔNG TY ---
+      // ----------------------------------------------------------------------
+      let allApplicablePromotions: ApplicablePromotion[] = [];
+      const now = new Date();
+
       try {
-        // Gọi API Python (ví dụ lấy top 10 theo số vé trong 30 ngày)
-        const popularRouteResponse = await firstValueFrom(
-          this.httpService.get<{ data: PopularRoute[] }>(
-            `${this.pythonApiUrl}/reports/top-routes`,
-            { params: { metric: 'tickets', days: 30, limit: 10 } }, // Lấy top 10 theo số vé
-          ),
-        );
-        if (popularRouteResponse.data && popularRouteResponse.data.data) {
-          popularRouteIds = new Set(
-            popularRouteResponse.data.data.map((route) => route.route_id),
-          );
-          this.logger.debug(
-            `Fetched popular route IDs: ${[...popularRouteIds]}`,
-          );
-        }
-      } catch (pyApiError) {
-        this.logger.error(
-          `Failed to fetch popular routes from Python API: ${pyApiError.message}`,
-        );
-        // Không làm dừng chương trình, chỉ log lỗi
-      }
+        // Lấy tất cả mã khuyến mãi: (1) Mã global (company_id: null) VÀ (2) Mã của các công ty trong tuyến
+        const rawPromotions = await this.prisma.promotions.findMany({
+          where: {
+            is_active: true, // Phải đang kích hoạt
+            valid_from: { lte: now }, // Phải còn hiệu lực (bắt đầu <= hiện tại)
+            valid_to: { gte: now }, // Phải còn hiệu lực (kết thúc >= hiện tại)
+            OR: [
+              { company_id: null }, // Mã global
+              { company_id: { in: companyIds } }, // Mã của các công ty đang có chuyến
+            ],
+          },
+          select: {
+            id: true,
+            code: true,
+            description: true,
+            discount_type: true,
+            discount_value: true,
+            company_id: true,
+          },
+        });
 
-      // --- BƯỚC 4: ĐỊNH DẠNG DỮ LIỆU & THÊM CỜ is_good_price ---
+        // Ánh xạ kết quả Prisma thành kiểu ApplicablePromotion
+        allApplicablePromotions = rawPromotions.map((promo) => ({
+          id: promo.id,
+          code: promo.code,
+          description: promo.description,
+          discount_type: promo.discount_type as 'fixed_amount' | 'percentage', // Cast kiểu string sang union type
+          discount_value: promo.discount_value,
+          company_id: promo.company_id,
+        }));
+
+        this.logger.debug(
+          `Found ${allApplicablePromotions.length} applicable promotions from DB.`,
+        );
+      } catch (dbError) {
+        this.logger.error(
+          `Failed to fetch applicable promotions directly from DB: ${dbError.message}`,
+          dbError,
+        );
+        allApplicablePromotions = [];
+      }
+      // ===========================================
+      // ===========================================
+      // Tạo Map để tra cứu nhanh: CompanyID -> List<Promotion>
+      const promoMap = new Map<number, ApplicablePromotion[]>();
+
+      allApplicablePromotions.forEach((promo) => {
+        // Gán mã global cho tất cả nhà xe
+        if (promo.company_id === null) {
+          companyIds.forEach((id) => {
+            const promos = promoMap.get(id) || [];
+            // Tránh mã global trùng lặp trong list
+            if (!promos.some((p) => p.id === promo.id)) {
+              promos.push(promo);
+              promoMap.set(id, promos);
+            }
+          });
+        } else {
+          // Gán mã cụ thể cho nhà xe đó
+          const promos = promoMap.get(promo.company_id) || [];
+          promos.push(promo);
+          promoMap.set(promo.company_id, promos);
+        }
+      });
+      // ===========================================
+
+      // --- BƯỚC 4: ĐỊNH DẠNG DỮ LIỆU & THÊM CỜ ---
       const formattedTrips = finalTrips.map((trip) => {
         const company = trip.company_route.transport_companies;
         const route = trip.company_route.routes;
@@ -265,9 +326,7 @@ export class TripClientService {
             ).toISOString();
           }
         } catch (e) {
-          this.logger.warn(
-            `Could not calculate arrival time for trip ${trip.id}`,
-          );
+          /* ... */
         }
 
         const totalSeats = trip.seat_layout_templates?.seat_count || 0;
@@ -283,8 +342,21 @@ export class TripClientService {
           trip.price_default <= goodPriceThreshold
         );
 
-        const route_id = route.id; // Lấy ID của tuyến đường chính
-        const is_popular = popularRouteIds.has(route_id);
+        // === GÁN THÔNG TIN KHUYẾN MÃI (CHỌN MÃ TỐT NHẤT) ===
+        const availablePromos = promoMap.get(company.id) || [];
+
+        // Logic chọn KM: chọn KM có discount_value cao nhất (chưa tính loại % hay số tiền)
+        const bestPromo = availablePromos.reduce(
+          (best, current) => {
+            // Logic đơn giản: ưu tiên giá trị tuyệt đối lớn hơn
+            if (!best || current.discount_value > best.discount_value) {
+              return current;
+            }
+            return best;
+          },
+          null as ApplicablePromotion | null,
+        );
+        // ======================================
 
         // Trả về cấu trúc dữ liệu chuẩn cho Frontend
         return {
@@ -293,29 +365,28 @@ export class TripClientService {
           departureTime: trip.departure_time.toISOString(),
           arrivalTime: arrivalTime,
           durationMinutes: durationMinutes,
-          // Giữ nguyên fromLocation, toLocation theo query ban đầu của người dùng
-          fromLocation: { name: from },
-          toLocation: { name: to },
+          fromLocation: { name: from }, // Dùng from/to từ query
+          toLocation: { name: to }, // Dùng from/to từ query
           companyName: company.name,
           companyLogoUrl: company.avatar_url,
           companyId: company.id,
           busType: vehicleType ? vehicleType.name : 'Chưa rõ',
-          amenities: [], // Cần logic để lấy amenities
+          amenities: [],
           companyAverageRating: summary ? summary.averageRating : null,
           companyTotalReviews: summary ? summary.totalReviews : 0,
           seatsAvailable: seatsAvailable,
-          is_good_price: is_good_price, // Thêm cờ mới
-          is_popular: is_popular,
+          is_good_price: is_good_price,
+          promotion_info: bestPromo || null, // Gán mã khuyến mãi được ưu tiên nhất
         };
       });
 
       return formattedTrips;
     } catch (error) {
       this.logger.error(
-        `Error fetching trips for route ${from} -> ${to} on ${date}:`,
+        `Critical error in trip fetching pipeline: ${error.message}`,
         error,
       );
-      return []; // Trả về mảng rỗng khi có lỗi
+      return [];
     }
   }
 
