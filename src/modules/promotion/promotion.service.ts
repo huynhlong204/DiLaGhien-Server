@@ -35,14 +35,16 @@ export class PromotionService {
 
     // Admin có thể tạo KM global (company_id = null) hoặc cho nhà xe cụ thể (cần thêm field company_id vào DTO nếu muốn)
     // Hiện tại mặc định Admin tạo global
-    if (user.role_id === 2) {
-      // Role Company
+    // Admin có thể tạo KM global (company_id = null) hoặc cho nhà xe cụ thể (cần thêm field company_id vào DTO nếu muốn)
+    // Hiện tại mặc định Admin tạo global
+    if (user.role.name === 'owner' || user.role.name === 'nhanvien') {
+      // Role Company (Owner or Staff)
       if (!user.company_id) {
         throw new ForbiddenException('Tài khoản nhà xe không hợp lệ.');
       }
       companyId = user.company_id; // Nhà xe chỉ tạo được KM cho chính mình
-    } else if (user.role_id !== 1) {
-      // Role Admin = 1
+    } else if (user.role.name !== 'admin') {
+      // Not Admin and Not Company
       throw new ForbiddenException('Không có quyền tạo khuyến mãi.');
     }
     // Nếu là Admin (role_id=1), companyId giữ nguyên là null (global)
@@ -72,14 +74,15 @@ export class PromotionService {
     const where: Prisma.promotionsWhereInput = {};
 
     // 1. Lọc theo quyền truy cập (Quan trọng)
-    if (user.role_id === 2) {
+    // 1. Lọc theo quyền truy cập (Quan trọng)
+    if (user.role.name === 'owner' || user.role.name === 'nhanvien') {
       // Role Company
       if (!user.company_id) {
         throw new ForbiddenException('Tài khoản nhà xe không hợp lệ.');
       }
       // Nhà xe chỉ thấy KM của mình
       where.company_id = user.company_id;
-    } else if (user.role_id === 1) {
+    } else if (user.role.name === 'admin') {
       // Role Admin
       // Admin có thể thấy tất cả (global + của các nhà xe)
       // Nếu muốn Admin lọc theo nhà xe cụ thể, cần thêm companyId vào query DTO
@@ -149,10 +152,18 @@ export class PromotionService {
     }
 
     // Kiểm tra quyền: Admin được xem tất cả, Company chỉ được xem của mình
-    if (user.role_id === 2 && promotion.company_id !== user.company_id) {
+    // Kiểm tra quyền: Admin được xem tất cả, Company chỉ được xem của mình
+    if (
+      (user.role.name === 'owner' || user.role.name === 'nhanvien') &&
+      promotion.company_id !== user.company_id
+    ) {
       throw new ForbiddenException('Bạn không có quyền xem khuyến mãi này.');
     }
-    if (user.role_id !== 1 && user.role_id !== 2) {
+    const isCompany =
+      user.role.name === 'owner' || user.role.name === 'nhanvien';
+    const isAdmin = user.role.name === 'admin';
+
+    if (!isAdmin && !isCompany) {
       throw new ForbiddenException('Không có quyền xem khuyến mãi.');
     }
 

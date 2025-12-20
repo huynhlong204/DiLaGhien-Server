@@ -6,14 +6,18 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { CreateRouteDto, UpdateRouteDto, CreateCompanyRouteDto } from './dto/index.dto';
+import {
+  CreateRouteDto,
+  UpdateRouteDto,
+  CreateCompanyRouteDto,
+} from './dto/index.dto';
 import { AuthenticatedUser } from '../../auth/interfaces/authenticated-user.interface';
 import { UserRole } from '../../auth/enums/role.enum';
 import { routes, company_routes } from '@prisma/client';
 
 @Injectable()
 export class RouteService {
-  constructor(private prisma: PrismaService) { }
+  constructor(private prisma: PrismaService) {}
 
   private async getRoleId(roleName: UserRole): Promise<number> {
     const role = await this.prisma.roles.findUnique({
@@ -21,12 +25,17 @@ export class RouteService {
       select: { role_id: true },
     });
     if (!role) {
-      throw new Error(`Role '${roleName}' not found in database. Please seed roles.`);
+      throw new Error(
+        `Role '${roleName}' not found in database. Please seed roles.`,
+      );
     }
     return role.role_id;
   }
 
-  async createRoute(createRouteDto: CreateRouteDto, user: AuthenticatedUser): Promise<routes> {
+  async createRoute(
+    createRouteDto: CreateRouteDto,
+    user: AuthenticatedUser,
+  ): Promise<routes> {
     const adminRoleId = await this.getRoleId(UserRole.ADMIN);
 
     if (user.role_id !== adminRoleId) {
@@ -35,14 +44,22 @@ export class RouteService {
 
     const { from_location_id, to_location_id } = createRouteDto;
 
-    const fromLocation = await this.prisma.locations.findUnique({ where: { id: from_location_id } });
-    const toLocation = await this.prisma.locations.findUnique({ where: { id: to_location_id } });
+    const fromLocation = await this.prisma.locations.findUnique({
+      where: { id: from_location_id },
+    });
+    const toLocation = await this.prisma.locations.findUnique({
+      where: { id: to_location_id },
+    });
 
     if (!fromLocation) {
-      throw new NotFoundException(`Điểm đi với ID ${from_location_id} không tìm thấy.`);
+      throw new NotFoundException(
+        `Điểm đi với ID ${from_location_id} không tìm thấy.`,
+      );
     }
     if (!toLocation) {
-      throw new NotFoundException(`Điểm đến với ID ${to_location_id} không tìm thấy.`);
+      throw new NotFoundException(
+        `Điểm đến với ID ${to_location_id} không tìm thấy.`,
+      );
     }
 
     const existingRoute = await this.prisma.routes.findFirst({
@@ -53,7 +70,9 @@ export class RouteService {
     });
 
     if (existingRoute) {
-      throw new BadRequestException(`Tuyến đường từ '${fromLocation.name}' đến '${toLocation.name}' đã tồn tại.`);
+      throw new BadRequestException(
+        `Tuyến đường từ '${fromLocation.name}' đến '${toLocation.name}' đã tồn tại.`,
+      );
     }
 
     return this.prisma.routes.create({
@@ -73,7 +92,9 @@ export class RouteService {
     const adminRoleId = await this.getRoleId(UserRole.ADMIN);
 
     if (user.role_id !== adminRoleId) {
-      throw new ForbiddenException('Bạn không có quyền xem tất cả tuyến đường.');
+      throw new ForbiddenException(
+        'Bạn không có quyền xem tất cả tuyến đường.',
+      );
     }
 
     return this.prisma.routes.findMany({
@@ -89,12 +110,21 @@ export class RouteService {
     });
   }
 
-  async getAllRoutesWithoutCompanyInfo(user: AuthenticatedUser): Promise<routes[]> {
+  async getAllRoutesWithoutCompanyInfo(
+    user: AuthenticatedUser,
+  ): Promise<routes[]> {
     const adminRoleId = await this.getRoleId(UserRole.ADMIN);
     const ownerRoleId = await this.getRoleId(UserRole.OWNER);
+    const employeeRoleId = await this.getRoleId(UserRole.NHANVIEN);
 
-    if (user.role_id !== adminRoleId && user.role_id !== ownerRoleId) {
-      throw new ForbiddenException('Bạn không có quyền xem danh sách tuyến đường có sẵn.');
+    if (
+      user.role_id !== adminRoleId &&
+      user.role_id !== ownerRoleId &&
+      user.role_id !== employeeRoleId
+    ) {
+      throw new ForbiddenException(
+        'Bạn không có quyền xem danh sách tuyến đường có sẵn.',
+      );
     }
 
     return this.prisma.routes.findMany({
@@ -109,7 +139,9 @@ export class RouteService {
     const adminRoleId = await this.getRoleId(UserRole.ADMIN);
 
     if (user.role_id !== adminRoleId) {
-      throw new ForbiddenException('Bạn không có quyền xem chi tiết tuyến đường này.');
+      throw new ForbiddenException(
+        'Bạn không có quyền xem chi tiết tuyến đường này.',
+      );
     }
 
     const route = await this.prisma.routes.findUnique({
@@ -130,35 +162,54 @@ export class RouteService {
     return route;
   }
 
-  async updateRoute(id: number, updateRouteDto: UpdateRouteDto, user: AuthenticatedUser): Promise<routes> {
+  async updateRoute(
+    id: number,
+    updateRouteDto: UpdateRouteDto,
+    user: AuthenticatedUser,
+  ): Promise<routes> {
     const adminRoleId = await this.getRoleId(UserRole.ADMIN);
 
     if (user.role_id !== adminRoleId) {
       throw new ForbiddenException('Bạn không có quyền cập nhật tuyến đường.');
     }
 
-    const existingRoute = await this.prisma.routes.findUnique({ where: { id } });
+    const existingRoute = await this.prisma.routes.findUnique({
+      where: { id },
+    });
     if (!existingRoute) {
       throw new NotFoundException(`Tuyến đường với ID ${id} không tìm thấy.`);
     }
 
     if (updateRouteDto.from_location_id) {
-      const fromLocation = await this.prisma.locations.findUnique({ where: { id: updateRouteDto.from_location_id } });
+      const fromLocation = await this.prisma.locations.findUnique({
+        where: { id: updateRouteDto.from_location_id },
+      });
       if (!fromLocation) {
-        throw new NotFoundException(`Điểm đi với ID ${updateRouteDto.from_location_id} không tìm thấy.`);
+        throw new NotFoundException(
+          `Điểm đi với ID ${updateRouteDto.from_location_id} không tìm thấy.`,
+        );
       }
     }
     if (updateRouteDto.to_location_id) {
-      const toLocation = await this.prisma.locations.findUnique({ where: { id: updateRouteDto.to_location_id } });
+      const toLocation = await this.prisma.locations.findUnique({
+        where: { id: updateRouteDto.to_location_id },
+      });
       if (!toLocation) {
-        throw new NotFoundException(`Điểm đến với ID ${updateRouteDto.to_location_id} không tìm thấy.`);
+        throw new NotFoundException(
+          `Điểm đến với ID ${updateRouteDto.to_location_id} không tìm thấy.`,
+        );
       }
     }
 
-    const newFromId = updateRouteDto.from_location_id ?? existingRoute.from_location_id;
-    const newToId = updateRouteDto.to_location_id ?? existingRoute.to_location_id;
+    const newFromId =
+      updateRouteDto.from_location_id ?? existingRoute.from_location_id;
+    const newToId =
+      updateRouteDto.to_location_id ?? existingRoute.to_location_id;
 
-    if (newFromId !== existingRoute.from_location_id || newToId !== existingRoute.to_location_id) {
+    if (
+      newFromId !== existingRoute.from_location_id ||
+      newToId !== existingRoute.to_location_id
+    ) {
       const duplicateRoute = await this.prisma.routes.findFirst({
         where: {
           from_location_id: newFromId,
@@ -167,7 +218,9 @@ export class RouteService {
         },
       });
       if (duplicateRoute) {
-        throw new BadRequestException(`Tuyến đường từ ID ${newFromId} đến ID ${newToId} đã tồn tại.`);
+        throw new BadRequestException(
+          `Tuyến đường từ ID ${newFromId} đến ID ${newToId} đã tồn tại.`,
+        );
       }
     }
 
@@ -188,18 +241,20 @@ export class RouteService {
       throw new ForbiddenException('Bạn không có quyền xóa tuyến đường.');
     }
 
-    const existingRoute = await this.prisma.routes.findUnique({ where: { id } });
+    const existingRoute = await this.prisma.routes.findUnique({
+      where: { id },
+    });
     if (!existingRoute) {
       throw new NotFoundException(`Tuyến đường với ID ${id} không tìm thấy.`);
     }
 
     // Kiểm tra xem tuyến đường có đang được sử dụng trong company_routes không
     const companyRoutesCount = await this.prisma.company_routes.count({
-      where: { route_id: id }
+      where: { route_id: id },
     });
     if (companyRoutesCount > 0) {
       throw new BadRequestException(
-        `Không thể xóa tuyến đường này vì nó đang được gán cho ${companyRoutesCount} công ty. Vui lòng gỡ bỏ liên kết trước.`
+        `Không thể xóa tuyến đường này vì nó đang được gán cho ${companyRoutesCount} công ty. Vui lòng gỡ bỏ liên kết trước.`,
       );
     }
 
@@ -212,23 +267,36 @@ export class RouteService {
     });
   }
 
-  async assignRouteToCompany(createCompanyRouteDto: CreateCompanyRouteDto, user: AuthenticatedUser): Promise<company_routes> {
+  async assignRouteToCompany(
+    createCompanyRouteDto: CreateCompanyRouteDto,
+    user: AuthenticatedUser,
+  ): Promise<company_routes> {
     const adminRoleId = await this.getRoleId(UserRole.ADMIN);
 
     if (user.role_id !== adminRoleId) {
-      throw new ForbiddenException('Bạn không có quyền gán tuyến đường cho công ty.');
+      throw new ForbiddenException(
+        'Bạn không có quyền gán tuyến đường cho công ty.',
+      );
     }
 
     const { company_id, route_id, approved } = createCompanyRouteDto;
 
-    const routeExists = await this.prisma.routes.findUnique({ where: { id: route_id } });
-    const companyExists = await this.prisma.transport_companies.findUnique({ where: { id: company_id } });
+    const routeExists = await this.prisma.routes.findUnique({
+      where: { id: route_id },
+    });
+    const companyExists = await this.prisma.transport_companies.findUnique({
+      where: { id: company_id },
+    });
 
     if (!routeExists) {
-      throw new NotFoundException(`Tuyến đường với ID ${route_id} không tìm thấy.`);
+      throw new NotFoundException(
+        `Tuyến đường với ID ${route_id} không tìm thấy.`,
+      );
     }
     if (!companyExists) {
-      throw new NotFoundException(`Công ty với ID ${company_id} không tìm thấy.`);
+      throw new NotFoundException(
+        `Công ty với ID ${company_id} không tìm thấy.`,
+      );
     }
 
     const existingCompanyRoute = await this.prisma.company_routes.findUnique({
@@ -271,11 +339,17 @@ export class RouteService {
     }
   }
 
-  async removeCompanyRoute(company_id: number, route_id: number, user: AuthenticatedUser): Promise<void> {
+  async removeCompanyRoute(
+    company_id: number,
+    route_id: number,
+    user: AuthenticatedUser,
+  ): Promise<void> {
     const adminRoleId = await this.getRoleId(UserRole.ADMIN);
 
     if (user.role_id !== adminRoleId) {
-      throw new ForbiddenException('Bạn không có quyền gỡ bỏ liên kết tuyến đường khỏi công ty.');
+      throw new ForbiddenException(
+        'Bạn không có quyền gỡ bỏ liên kết tuyến đường khỏi công ty.',
+      );
     }
 
     const companyRoute = await this.prisma.company_routes.findUnique({
@@ -286,20 +360,23 @@ export class RouteService {
         },
       },
       include: {
-        trips: { // Bao gồm các chuyến đi liên quan để kiểm tra
+        trips: {
+          // Bao gồm các chuyến đi liên quan để kiểm tra
           where: { status: { in: ['scheduled', 'active', 'pending'] } },
         },
       },
     });
 
     if (!companyRoute) {
-      throw new NotFoundException(`Liên kết tuyến đường với công ty (Company ID ${company_id}, Route ID ${route_id}) không tìm thấy.`);
+      throw new NotFoundException(
+        `Liên kết tuyến đường với công ty (Company ID ${company_id}, Route ID ${route_id}) không tìm thấy.`,
+      );
     }
 
     // Kiểm tra xem có chuyến đi nào đang sử dụng company_route_id này không
     if (companyRoute.trips.length > 0) {
       throw new BadRequestException(
-        `Không thể gỡ bỏ tuyến đường này vì có ${companyRoute.trips.length} chuyến đi đang sử dụng hoặc được lên lịch liên quan đến liên kết này.`
+        `Không thể gỡ bỏ tuyến đường này vì có ${companyRoute.trips.length} chuyến đi đang sử dụng hoặc được lên lịch liên quan đến liên kết này.`,
       );
     }
 
@@ -313,11 +390,18 @@ export class RouteService {
     });
   }
 
-  async updateCompanyRouteApproval(companyId: number, routeId: number, approved: boolean, user: AuthenticatedUser): Promise<company_routes> {
+  async updateCompanyRouteApproval(
+    companyId: number,
+    routeId: number,
+    approved: boolean,
+    user: AuthenticatedUser,
+  ): Promise<company_routes> {
     const adminRoleId = await this.getRoleId(UserRole.ADMIN);
 
     if (user.role_id !== adminRoleId) {
-      throw new ForbiddenException('Bạn không có quyền cập nhật trạng thái duyệt tuyến đường.');
+      throw new ForbiddenException(
+        'Bạn không có quyền cập nhật trạng thái duyệt tuyến đường.',
+      );
     }
 
     const companyRoute = await this.prisma.company_routes.findUnique({
@@ -330,7 +414,9 @@ export class RouteService {
     });
 
     if (!companyRoute) {
-      throw new NotFoundException(`Liên kết tuyến đường với công ty (Company ID ${companyId}, Route ID ${routeId}) không tìm thấy.`);
+      throw new NotFoundException(
+        `Liên kết tuyến đường với công ty (Company ID ${companyId}, Route ID ${routeId}) không tìm thấy.`,
+      );
     }
 
     return this.prisma.company_routes.update({
@@ -350,16 +436,24 @@ export class RouteService {
     });
   }
 
-  async getRoutesByCompanyId(companyId: number, user: AuthenticatedUser): Promise<any[]> {
+  async getRoutesByCompanyId(
+    companyId: number,
+    user: AuthenticatedUser,
+  ): Promise<any[]> {
     const adminRoleId = await this.getRoleId(UserRole.ADMIN);
     const ownerRoleId = await this.getRoleId(UserRole.OWNER);
+    const employeeRoleId = await this.getRoleId(UserRole.NHANVIEN);
 
-    if (user.role_id === ownerRoleId) {
+    if (user.role_id === ownerRoleId || user.role_id === employeeRoleId) {
       if (user.company_id === null || user.company_id !== companyId) {
-        throw new ForbiddenException('Bạn không có quyền xem tuyến đường của công ty này.');
+        throw new ForbiddenException(
+          'Bạn không có quyền xem tuyến đường của công ty này.',
+        );
       }
     } else if (user.role_id !== adminRoleId) {
-      throw new ForbiddenException('Bạn không có quyền xem tuyến đường của công ty.');
+      throw new ForbiddenException(
+        'Bạn không có quyền xem tuyến đường của công ty.',
+      );
     }
 
     const companyRoutes = await this.prisma.company_routes.findMany({
@@ -376,7 +470,7 @@ export class RouteService {
       },
     });
 
-    return companyRoutes.map(cr => ({
+    return companyRoutes.map((cr) => ({
       ...cr.routes,
       approved: cr.approved,
       companyId: cr.company_id,
@@ -384,16 +478,29 @@ export class RouteService {
     }));
   }
 
-  async requestRouteByCompany(routeId: number, user: AuthenticatedUser): Promise<company_routes> {
+  async requestRouteByCompany(
+    routeId: number,
+    user: AuthenticatedUser,
+  ): Promise<company_routes> {
     const ownerRoleId = await this.getRoleId(UserRole.OWNER);
+    const employeeRoleId = await this.getRoleId(UserRole.NHANVIEN);
 
-    if (user.role_id !== ownerRoleId || user.company_id === null) {
-      throw new ForbiddenException('Bạn không có quyền yêu cầu tuyến đường hoặc không thuộc về một công ty.');
+    if (
+      (user.role_id !== ownerRoleId && user.role_id !== employeeRoleId) ||
+      user.company_id === null
+    ) {
+      throw new ForbiddenException(
+        'Bạn không có quyền yêu cầu tuyến đường hoặc không thuộc về một công ty.',
+      );
     }
 
-    const routeExists = await this.prisma.routes.findUnique({ where: { id: routeId } });
+    const routeExists = await this.prisma.routes.findUnique({
+      where: { id: routeId },
+    });
     if (!routeExists) {
-      throw new NotFoundException(`Tuyến đường với ID ${routeId} không tìm thấy.`);
+      throw new NotFoundException(
+        `Tuyến đường với ID ${routeId} không tìm thấy.`,
+      );
     }
 
     const existingCompanyRoute = await this.prisma.company_routes.findUnique({
@@ -406,7 +513,9 @@ export class RouteService {
     });
 
     if (existingCompanyRoute) {
-      throw new BadRequestException('Công ty của bạn đã yêu cầu hoặc đã được gán tuyến đường này rồi.');
+      throw new BadRequestException(
+        'Công ty của bạn đã yêu cầu hoặc đã được gán tuyến đường này rồi.',
+      );
     }
 
     return this.prisma.company_routes.create({
@@ -422,11 +531,20 @@ export class RouteService {
     });
   }
 
-  async removeMyCompanyRoute(routeId: number, user: AuthenticatedUser): Promise<void> {
+  async removeMyCompanyRoute(
+    routeId: number,
+    user: AuthenticatedUser,
+  ): Promise<void> {
     const ownerRoleId = await this.getRoleId(UserRole.OWNER);
+    const employeeRoleId = await this.getRoleId(UserRole.NHANVIEN);
 
-    if (user.role_id !== ownerRoleId || user.company_id === null) {
-      throw new ForbiddenException('Bạn không có quyền gỡ bỏ tuyến đường này hoặc không thuộc về một công ty.');
+    if (
+      (user.role_id !== ownerRoleId && user.role_id !== employeeRoleId) ||
+      user.company_id === null
+    ) {
+      throw new ForbiddenException(
+        'Bạn không có quyền gỡ bỏ tuyến đường này hoặc không thuộc về một công ty.',
+      );
     }
 
     const companyRoute = await this.prisma.company_routes.findUnique({
@@ -437,20 +555,23 @@ export class RouteService {
         },
       },
       include: {
-        trips: { // Bao gồm các chuyến đi liên quan để kiểm tra
+        trips: {
+          // Bao gồm các chuyến đi liên quan để kiểm tra
           where: { status: { in: ['scheduled', 'active', 'pending'] } },
         },
       },
     });
 
     if (!companyRoute) {
-      throw new NotFoundException(`Tuyến đường ID ${routeId} không được gán cho công ty của bạn.`);
+      throw new NotFoundException(
+        `Tuyến đường ID ${routeId} không được gán cho công ty của bạn.`,
+      );
     }
 
     // Kiểm tra xem có chuyến đi nào đang sử dụng company_route_id này không
     if (companyRoute.trips.length > 0) {
       throw new BadRequestException(
-        `Không thể gỡ bỏ tuyến đường này vì có ${companyRoute.trips.length} chuyến đi đang sử dụng hoặc được lên lịch liên quan đến công ty của bạn.`
+        `Không thể gỡ bỏ tuyến đường này vì có ${companyRoute.trips.length} chuyến đi đang sử dụng hoặc được lên lịch liên quan đến công ty của bạn.`,
       );
     }
 

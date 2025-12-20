@@ -33,6 +33,7 @@ import { PaymentModule } from './payment/payment.module';
 import { ReviewModule } from './modules/review/review.module';
 import { PromotionModule } from './modules/promotion/promotion.module';
 import { InteractionsModule } from './modules/interactions/interactions.module';
+import { UserPermissionsModule } from './modules/user-permissions/user-permissions.module';
 import { PrismaService } from './prisma/prisma.service';
 
 @Module({
@@ -117,6 +118,7 @@ import { PrismaService } from './prisma/prisma.service';
     ReviewModule,
     PromotionModule,
     InteractionsModule,
+    UserPermissionsModule,
   ],
   controllers: [AppController],
   providers: [AppService, PrismaService],

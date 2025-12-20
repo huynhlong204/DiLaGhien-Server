@@ -29,14 +29,14 @@ export class TicketsController {
 
   @Get(':id')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.ADMIN, UserRole.OWNER)
+  @Roles(UserRole.ADMIN, UserRole.OWNER, UserRole.NHANVIEN)
   findOne(@Param('id', ParseIntPipe) id: number) {
     return this.ticketsService.findOne(id);
   }
 
   @Put(':id')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.ADMIN, UserRole.OWNER)
+  @Roles(UserRole.ADMIN, UserRole.OWNER, UserRole.NHANVIEN)
   update(
     @Param('id', ParseIntPipe) id: number,
     @Body() updateTicketDto: UpdateTicketDto,
@@ -46,21 +46,21 @@ export class TicketsController {
 
   @Get('/trip/:tripId')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.ADMIN, UserRole.OWNER)
+  @Roles(UserRole.ADMIN, UserRole.OWNER, UserRole.NHANVIEN)
   getTicketsByTrip(@Param('tripId', ParseIntPipe) tripId: number) {
     return this.ticketsService.getTicketsByTrip(tripId);
   }
 
   @Post('/')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.ADMIN, UserRole.OWNER)
+  @Roles(UserRole.ADMIN, UserRole.OWNER, UserRole.NHANVIEN)
   createManualTicket(@Body() createTicketDto: CreateTicketDto) {
     return this.ticketsService.createManualTicket(createTicketDto);
   }
 
   @Post('/cancel/:id')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.ADMIN, UserRole.OWNER)
+  @Roles(UserRole.ADMIN, UserRole.OWNER, UserRole.NHANVIEN)
   cancelTicket(@Param('id', ParseIntPipe) id: number) {
     return this.ticketsService.cancelTicket(id);
   }
@@ -85,7 +85,7 @@ export class TicketsController {
   // Lấy lịch sử đặt vé của một công ty
   @Get('/history/company/:companyId')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.ADMIN, UserRole.OWNER)
+  @Roles(UserRole.ADMIN, UserRole.OWNER, UserRole.NHANVIEN)
   getBookingHistoryByCompany(
     @Param('companyId', ParseIntPipe) companyId: number,
     // Thêm query params cho phân trang, với giá trị mặc định
@@ -105,7 +105,7 @@ export class TicketsController {
    */
   @Get('/history/company/:companyId/export')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.ADMIN, UserRole.OWNER)
+  @Roles(UserRole.ADMIN, UserRole.OWNER, UserRole.NHANVIEN)
   async exportBookingHistoryByCompany(
     @Param('companyId', ParseIntPipe) companyId: number,
     @Query('search') search: string | undefined,
@@ -135,7 +135,7 @@ export class TicketsController {
    */
   @Get('/trip/:tripId/export')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.ADMIN, UserRole.OWNER)
+  @Roles(UserRole.ADMIN, UserRole.OWNER, UserRole.NHANVIEN)
   async exportTicketsByTrip(
     @Param('tripId', ParseIntPipe) tripId: number,
     @Res() res: Response,

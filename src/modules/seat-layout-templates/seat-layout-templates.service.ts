@@ -1,5 +1,10 @@
 // src/seat-layout-templates/seat-layout-templates.service.ts
-import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+  ForbiddenException,
+} from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateSeatLayoutTemplateDto } from './dto/create-seat-layout-template.dto';
 import { UpdateSeatLayoutTemplateDto } from './dto/update-seat-layout-template.dto';
@@ -9,7 +14,7 @@ import { AuthenticatedUser } from '../../auth/interfaces/authenticated-user.inte
 
 @Injectable()
 export class SeatLayoutTemplatesService {
-  constructor(private prisma: PrismaService) { }
+  constructor(private prisma: PrismaService) {}
 
   private async getRoleId(roleName: UserRole): Promise<number> {
     const role = await this.prisma.roles.findUnique({
@@ -17,7 +22,9 @@ export class SeatLayoutTemplatesService {
       select: { role_id: true },
     });
     if (!role) {
-      throw new Error(`Role '${roleName}' not found in database. Please seed roles.`);
+      throw new Error(
+        `Role '${roleName}' not found in database. Please seed roles.`,
+      );
     }
     return role.role_id;
   }
@@ -29,17 +36,25 @@ export class SeatLayoutTemplatesService {
    * @param user Thông tin người dùng đã xác thực (AuthenticatedUser)
    * @returns Sơ đồ ghế đã được tạo
    */
-  async create(createDto: CreateSeatLayoutTemplateDto, user: AuthenticatedUser): Promise<seat_layout_templates> {
+  async create(
+    createDto: CreateSeatLayoutTemplateDto,
+    user: AuthenticatedUser,
+  ): Promise<seat_layout_templates> {
     const ownerRoleId = await this.getRoleId(UserRole.OWNER);
+    const employeeRoleId = await this.getRoleId(UserRole.NHANVIEN);
 
-    // Chỉ Owner được phép tạo
-    if (user.role_id !== ownerRoleId) {
-      throw new ForbiddenException('Bạn không có quyền tạo sơ đồ ghế. Chỉ Owner mới có thể thực hiện thao tác này.');
+    // Chỉ Owner hoặc Nhanvien được phép tạo
+    if (user.role_id !== ownerRoleId && user.role_id !== employeeRoleId) {
+      throw new ForbiddenException(
+        'Bạn không có quyền tạo sơ đồ ghế. Chỉ Owner hoặc Nhân viên mới có thể thực hiện thao tác này.',
+      );
     }
 
     // Đảm bảo Owner thuộc về một công ty
     if (user.company_id === null) {
-      throw new BadRequestException('Người dùng nhà xe phải thuộc về một công ty để tạo sơ đồ ghế.');
+      throw new BadRequestException(
+        'Người dùng nhà xe phải thuộc về một công ty để tạo sơ đồ ghế.',
+      );
     }
 
     const companyIdToAssign = user.company_id; // Sơ đồ luôn thuộc về công ty của Owner
@@ -75,12 +90,18 @@ export class SeatLayoutTemplatesService {
   async findAll(user: AuthenticatedUser): Promise<seat_layout_templates[]> {
     const adminRoleId = await this.getRoleId(UserRole.ADMIN);
     const ownerRoleId = await this.getRoleId(UserRole.OWNER);
+    const employeeRoleId = await this.getRoleId(UserRole.NHANVIEN);
 
     if (user.role_id === adminRoleId) {
       return this.prisma.seat_layout_templates.findMany(); // Admin xem tất cả
-    } else if (user.role_id === ownerRoleId) {
+    } else if (
+      user.role_id === ownerRoleId ||
+      user.role_id === employeeRoleId
+    ) {
       if (user.company_id === null) {
-        throw new BadRequestException('Người dùng nhà xe phải thuộc về một công ty.');
+        throw new BadRequestException(
+          'Người dùng nhà xe phải thuộc về một công ty.',
+        );
       }
       return this.prisma.seat_layout_templates.findMany({
         where: {
@@ -99,7 +120,10 @@ export class SeatLayoutTemplatesService {
    * @param user Thông tin người dùng đã xác thực (AuthenticatedUser)
    * @returns Sơ đồ ghế tìm được
    */
-  async findOne(id: number, user: AuthenticatedUser): Promise<seat_layout_templates> {
+  async findOne(
+    id: number,
+    user: AuthenticatedUser,
+  ): Promise<seat_layout_templates> {
     const template = await this.prisma.seat_layout_templates.findUnique({
       where: { id },
     });
@@ -110,17 +134,26 @@ export class SeatLayoutTemplatesService {
 
     const adminRoleId = await this.getRoleId(UserRole.ADMIN);
     const ownerRoleId = await this.getRoleId(UserRole.OWNER);
+    const employeeRoleId = await this.getRoleId(UserRole.NHANVIEN);
 
     if (user.role_id === adminRoleId) {
       return template; // Admin xem bất kỳ
-    } else if (user.role_id === ownerRoleId) {
+    } else if (
+      user.role_id === ownerRoleId ||
+      user.role_id === employeeRoleId
+    ) {
       if (user.company_id === null) {
-        throw new BadRequestException('Người dùng nhà xe phải thuộc về một công ty.');
+        throw new BadRequestException(
+          'Người dùng nhà xe phải thuộc về một công ty.',
+        );
       }
-      if (template.company_id === user.company_id) { // Owner chỉ xem của công ty mình
+      if (template.company_id === user.company_id) {
+        // Owner chỉ xem của công ty mình
         return template;
       }
-      throw new ForbiddenException('Bạn không có quyền truy cập sơ đồ ghế này.');
+      throw new ForbiddenException(
+        'Bạn không có quyền truy cập sơ đồ ghế này.',
+      );
     }
     throw new ForbiddenException('Bạn không có quyền xem sơ đồ ghế.');
   }
@@ -134,10 +167,16 @@ export class SeatLayoutTemplatesService {
    * @param user Thông tin người dùng đã xác thực (AuthenticatedUser)
    * @returns Sơ đồ ghế đã được cập nhật
    */
-  async update(id: number, updateDto: UpdateSeatLayoutTemplateDto, user: AuthenticatedUser): Promise<seat_layout_templates> {
-    const existingTemplate = await this.prisma.seat_layout_templates.findUnique({
-      where: { id },
-    });
+  async update(
+    id: number,
+    updateDto: UpdateSeatLayoutTemplateDto,
+    user: AuthenticatedUser,
+  ): Promise<seat_layout_templates> {
+    const existingTemplate = await this.prisma.seat_layout_templates.findUnique(
+      {
+        where: { id },
+      },
+    );
 
     if (!existingTemplate) {
       throw new NotFoundException(`Sơ đồ ghế với ID ${id} không tìm thấy.`);
@@ -149,37 +188,49 @@ export class SeatLayoutTemplatesService {
     }
 
     if (updateDto.name && updateDto.name !== existingTemplate.name) {
-      const duplicateTemplate = await this.prisma.seat_layout_templates.findFirst({
-        where: {
-          name: updateDto.name,
-          company_id: existingTemplate.company_id, // Vẫn kiểm tra trong phạm vi công ty cũ
-          NOT: { id: existingTemplate.id },
-        },
-      });
+      const duplicateTemplate =
+        await this.prisma.seat_layout_templates.findFirst({
+          where: {
+            name: updateDto.name,
+            company_id: existingTemplate.company_id, // Vẫn kiểm tra trong phạm vi công ty cũ
+            NOT: { id: existingTemplate.id },
+          },
+        });
       if (duplicateTemplate) {
-        throw new BadRequestException(`Sơ đồ ghế với tên '${updateDto.name}' đã tồn tại trong phạm vi công ty này.`);
+        throw new BadRequestException(
+          `Sơ đồ ghế với tên '${updateDto.name}' đã tồn tại trong phạm vi công ty này.`,
+        );
       }
     }
 
     const adminRoleId = await this.getRoleId(UserRole.ADMIN);
     const ownerRoleId = await this.getRoleId(UserRole.OWNER);
+    const employeeRoleId = await this.getRoleId(UserRole.NHANVIEN);
 
     if (user.role_id === adminRoleId) {
       return this.prisma.seat_layout_templates.update({
         where: { id },
         data: updateDto,
       });
-    } else if (user.role_id === ownerRoleId) {
+    } else if (
+      user.role_id === ownerRoleId ||
+      user.role_id === employeeRoleId
+    ) {
       if (user.company_id === null) {
-        throw new BadRequestException('Người dùng nhà xe phải thuộc về một công ty.');
+        throw new BadRequestException(
+          'Người dùng nhà xe phải thuộc về một công ty.',
+        );
       }
-      if (existingTemplate.company_id === user.company_id) { // Owner chỉ cập nhật của công ty mình
+      if (existingTemplate.company_id === user.company_id) {
+        // Owner chỉ cập nhật của công ty mình
         return this.prisma.seat_layout_templates.update({
           where: { id },
           data: updateDto,
         });
       }
-      throw new ForbiddenException('Bạn không có quyền cập nhật sơ đồ ghế này.');
+      throw new ForbiddenException(
+        'Bạn không có quyền cập nhật sơ đồ ghế này.',
+      );
     }
     throw new ForbiddenException('Bạn không có quyền cập nhật sơ đồ ghế.');
   }
@@ -193,9 +244,11 @@ export class SeatLayoutTemplatesService {
    * @param user Thông tin người dùng đã xác thực (AuthenticatedUser)
    */
   async remove(id: number, user: AuthenticatedUser): Promise<void> {
-    const existingTemplate = await this.prisma.seat_layout_templates.findUnique({
-      where: { id },
-    });
+    const existingTemplate = await this.prisma.seat_layout_templates.findUnique(
+      {
+        where: { id },
+      },
+    );
 
     if (!existingTemplate) {
       throw new NotFoundException(`Sơ đồ ghế với ID ${id} không tìm thấy.`);
@@ -213,14 +266,20 @@ export class SeatLayoutTemplatesService {
 
     const adminRoleId = await this.getRoleId(UserRole.ADMIN);
     const ownerRoleId = await this.getRoleId(UserRole.OWNER); // Sử dụng UserRole.OWNER
+    const employeeRoleId = await this.getRoleId(UserRole.NHANVIEN);
 
     if (user.role_id === adminRoleId) {
       await this.prisma.seat_layout_templates.delete({
         where: { id },
       });
-    } else if (user.role_id === ownerRoleId) {
+    } else if (
+      user.role_id === ownerRoleId ||
+      user.role_id === employeeRoleId
+    ) {
       if (user.company_id === null) {
-        throw new BadRequestException('Người dùng nhà xe phải thuộc về một công ty.');
+        throw new BadRequestException(
+          'Người dùng nhà xe phải thuộc về một công ty.',
+        );
       }
       if (existingTemplate.company_id === user.company_id) {
         await this.prisma.seat_layout_templates.delete({

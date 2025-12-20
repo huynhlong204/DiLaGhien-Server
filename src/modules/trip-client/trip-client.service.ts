@@ -209,25 +209,22 @@ export class TripClientService {
       const goodPriceThreshold =
         medianPrice && medianPrice > 0 ? medianPrice * 0.85 : null;
 
-      // --- BƯỚC 3: LẤY DỮ LIỆU REVIEW & COMPANY IDs ---
+      // --- BƯỚC 3: LẤY DỮ LIỆU REVIEW & COMPANY IDs (BATCH OPTIMIZED) ---
       const companyIds = [
         ...new Set(
           finalTrips.map((trip) => trip.company_route.transport_companies.id),
         ),
       ];
-      const reviewSummaries = await Promise.all(
-        companyIds.map((id) =>
-          this.reviewService.getReviewSummaryByCompany(id).catch((err) => ({
-            companyId: id,
-            averageRating: null,
-            totalReviews: 0,
-          })),
-        ),
-      );
 
-      const summaryMap = new Map(
-        reviewSummaries.map((summary) => [summary.companyId, summary]),
-      );
+      // OLD SLOW WAY: await Promise.all(companyIds.map(...))
+      // NEW FAST WAY: Single Query
+      const reviewStatsMap =
+        await this.reviewService.getReviewStatsForCompanies(companyIds);
+
+      const summaryMap = {
+        get: (id: number) =>
+          reviewStatsMap.get(id) || { averageRating: null, totalReviews: 0 },
+      }; // Mocking the Map interface we used before slightly, or just use the map directly inside map loop below.
       this.logger.debug(
         `Calling internal Promotions API at ${NESTJS_API_URL}/promotion/applicable for companyId=${representativeCompanyId}`,
       );
@@ -312,7 +309,7 @@ export class TripClientService {
         const company = trip.company_route.transport_companies;
         const route = trip.company_route.routes;
         const vehicleType = trip.vehicle_type;
-        const summary = summaryMap.get(company.id);
+        const summary = reviewStatsMap.get(company.id);
 
         const durationMinutes = this.parseDurationToMinutes(
           route.estimated_time,

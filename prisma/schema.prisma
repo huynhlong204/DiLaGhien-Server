@@ -22,6 +22,7 @@ model users {
   transport_company transport_companies? @relation("users_transport_companies", fields: [company_id], references: [id], onDelete: SetNull)
   sessions          session[]
   driving_trips     trips[]              @relation("TripDriver")
+  user_module_permissions user_module_permissions[]
 
   @@index([role_id])
   @@index([company_id])
@@ -82,6 +83,7 @@ model modules {
   description             String?
   permissions             permissions[]
   role_module_permissions role_module_permissions[]
+  user_module_permissions user_module_permissions[]
 
   @@index([name])
   @@index([code])
@@ -111,6 +113,17 @@ model role_module_permissions {
   @@index([role_id])
   @@index([module_id])
   @@map("role_module_permissions")
+}
+
+model user_module_permissions {
+  user_id             Int
+  module_id           Int
+  permissions_bitmask Int
+  users               users   @relation(fields: [user_id], references: [user_id], onDelete: Cascade)
+  modules             modules @relation(fields: [module_id], references: [module_id], onDelete: Cascade)
+
+  @@id([user_id, module_id])
+  @@map("user_module_permissions")
 }
 
 // ==== CUSTOMERS ====
@@ -270,6 +283,8 @@ model routes {
   trips            trips[]
 
   @@unique([from_location_id, to_location_id])
+  @@index([from_location_id])
+  @@index([to_location_id])
   @@map("routes")
 }
 
@@ -299,6 +314,8 @@ model trips {
    reviews reviews[]
 
   @@map("trips")
+  @@index([departure_time])
+  @@index([company_route_id])
 }
 
 // ==== TICKETS & PAYMENTS ====
@@ -405,6 +422,7 @@ model reviews {
   customer customers @relation(fields: [customer_id], references: [customer_id], onDelete: Cascade)
 
   @@unique([trip_id, customer_id]) // Mỗi khách chỉ đánh giá 1 chuyến 1 lần
+  @@index([trip_id])
   @@map("reviews")
 }
 
