@@ -1,98 +1,157 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+Cảm ơn bạn đã cung cấp thông tin! Dưới đây là phiên bản cập nhật README.md phù hợp với dự án **backend của website vận tải hành khách**:
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+---
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+# DiLaGhien-Server
 
-## Description
+## Giới thiệu
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+**DiLaGhien-Server** là dự án backend phục vụ cho hệ thống website đặt vé và quản lý vận tải hành khách. Hệ thống này có nhiệm vụ xử lý các tác vụ như quản lý thông tin chuyến xe, đặt chỗ, thanh toán, và cung cấp các API hỗ trợ frontend tương tác dễ dàng và hiệu quả.
 
-## Project setup
+## Chức năng chính
 
-```bash
-$ npm install
+- **Quản lý thông tin chuyến xe**: Tạo, sửa, xóa, và cập nhật chi tiết các chuyến xe.
+- **Đặt vé và thanh toán**: Hỗ trợ đặt vé trực tuyến và xác nhận thanh toán.
+- **Quản lý người dùng**: Đăng ký, đăng nhập, và quản lý thông tin tài khoản khách hàng, tài xế, và nhân viên.
+- **Thống kê**: Tổng hợp doanh thu và ghi nhận lịch sử giao dịch.
+- **Tương tác API**: Cung cấp các endpoint RESTful API để giao tiếp với frontend.
+
+## Các module chính
+
+### **1. `controllers/`**
+- **Nhiệm vụ**: Xử lý toàn bộ logic nghiệp vụ.
+- **Các controllers tiêu biểu**:
+  - **`TripController`**: Quản lý thông tin các chuyến xe (lịch trình, điểm đi, điểm đến, thời gian, số ghế...).
+  - **`AuthController`**: Xử lý đăng ký, đăng nhập, và xác thực người dùng.
+  - **`BookingController`**: Đặt vé, hủy vé, và quản lý lịch sử giao dịch.
+  - **`PaymentController`**: Tích hợp với các cổng thanh toán như Momo, ViettelPay...
+  
+### **2. `routes/`**
+- **Nhiệm vụ**: Định nghĩa các endpoint chính của hệ thống.
+- **Ví dụ các route**:
+  - `POST /auth/register`: Đăng ký tài khoản.
+  - `POST /trips`: Tạo chuyến xe mới.
+  - `GET /booking/:id`: Lấy thông tin đặt vé dựa trên ID.
+  - `POST /payment/checkout`: Xử lý thanh toán.
+
+### **3. `models/`**
+- **Nhiệm vụ**: Định nghĩa cấu trúc dữ liệu của cơ sở dữ liệu (database schema).
+- **Các model chính**:
+  - **`User`**: Thông tin về người dùng (tên, số điện thoại, loại tài khoản...).
+  - **`Trip`**: Thông tin về chuyến xe (thời gian khởi hành, tuyến đường...).
+  - **`Booking`**: Lưu trữ chi tiết đặt chỗ (mã vé, ghế ngồi, trạng thái...).
+  - **`Payment`**: Ghi nhận thông tin thanh toán đơn hàng.
+
+### **4. `middlewares/`**
+- **Nhiệm vụ**:
+  - Xác thực người dùng (Authentication Middleware).
+  - Phân quyền (Authorization Middleware).
+  - Ghi log request.
+- **Ví dụ**:
+  - Kiểm tra token hợp lệ trước khi truy cập API yêu cầu xác thực.
+
+### **5. `utils/`**
+- **Nhiệm vụ**: Hàm tiện ích dùng chung.
+- **Ví dụ**:
+  - Generate mã vé đặt chỗ (`generateBookingCode`).
+  - Tạo JWT Token cho người dùng.
+  - Hàm format thời gian hiển thị.
+
+### **6. `services/`**
+- **Nhiệm vụ**:
+  - Thực hiện logic nghiệp vụ cụ thể tại các tầng thấp hơn controllers.
+- **Ví dụ**:
+  - Tích hợp API thanh toán từ các bên thứ 3.
+  - Tính toán chi phí và doanh thu từ các chuyến đi.
+
+---
+
+## Hướng dẫn triển khai
+
+### **Yêu cầu**
+
+- Node.js phiên bản >= X.
+- Database: PostgreSQL hoặc MongoDB (tuỳ vào thiết lập).
+- Cần các cổng API bên thứ ba nếu hỗ trợ (cổng thanh toán, SMS).
+
+### **Cài đặt**
+
+1. Clone repo:
+   ```sh
+   git clone https://github.com/huynhlong204/DiLaGhien-Server.git
+   cd DiLaGhien-Server
+   ```
+
+2. Cài đặt dependencies:
+   ```bash
+   npm install
+   ```
+
+3. Cấu hình file `.env`:
+   - Tạo file `.env` theo mẫu `.env.example` và cấu hình các giá trị:
+     ```env
+     DATABASE_URL=<DATABASE_CONNECTION_STRING>
+     PORT=<PORT_NUMBER>
+     JWT_SECRET=<YOUR_SECRET_KEY>
+     PAYMENT_API_KEY=<PAYMENT_GATEWAY_API_KEY>
+     ```
+
+4. Chạy server:
+   ```bash
+   npm run dev
+   ```
+
+### **Triển khai môi trường sản xuất**
+
+- Cần thiết lập hệ thống CI/CD (Continuous Integration/Continuous Deployment) nếu cần.
+- Dockerize ứng dụng để dễ dàng deploy.
+
+---
+
+## Cấu trúc thư mục
+
+```
+DiLaGhien-Server/
+│
+├── src/
+│   ├── controllers/      # Xử lý logic API
+│   ├── middlewares/      # Xử lý request phía middleware
+│   ├── models/           # Định nghĩa schema database
+│   ├── routes/           # Khai báo API endpoint
+│   ├── services/         # Code xử lý tầng nghiệp vụ
+│   ├── utils/            # Tiện ích hỗ trợ
+│
+├── .env.example          # File mẫu biến môi trường
+├── package.json          # Quản lý dependencies
+├── README.md             # Tài liệu dự án
+└── ...
 ```
 
-## Compile and run the project
+---
 
-```bash
-# development
-$ npm run start
+## Đóng góp
 
-# watch mode
-$ npm run start:dev
+1. **Fork** repository.
+2. **Tạo branch mới**:
+   ```bash
+   git checkout -b feature/<tên-chức-năng>
+   ```
+3. **Commit thay đổi của bạn**:
+   ```bash
+   git commit -m "Thêm tính năng <tên-chức-năng>"
+   ```
+4. **Push lên branch của bạn**:
+   ```bash
+   git push origin feature/<tên-chức-năng>
+   ```
+5. Gửi **Pull Request** để xem xét và merge.
 
-# production mode
-$ npm run start:prod
-```
-
-## Run tests
-
-```bash
-# unit tests
-$ npm run test
-
-# e2e tests
-$ npm run test:e2e
-
-# test coverage
-$ npm run test:cov
-```
-
-## Deployment
-
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
-
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
-
-```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
-```
-
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
-
-## Resources
-
-Check out a few resources that may come in handy when working with NestJS:
-
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
-
-## Support
-
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
-
-## Stay in touch
-
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
+---
 
 ## License
 
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+Dự án được phát hành dưới giấy phép **MIT License**. Xem chi tiết tại file `LICENSE`.
+
+---
+
+README này đặc biệt chú trọng vào đặc thù của dự án vận tải hành khách. Nếu cần bổ sung thêm nội dung cụ thể nào, bạn chỉ cần nói với tôi nhé! 😊
